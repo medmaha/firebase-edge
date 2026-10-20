@@ -1,7 +1,8 @@
 import { FirebaseError } from './errors';
 import { createIdentityClient } from './identity';
+import { createIdTokenVerifier } from './jwks';
 import type { Context, EmailSender } from './types';
-import { AuthApi, CreateUserPayload } from './types/auth';
+import { AuthApi, CreateUserPayload, VerifyIdTokenOptions } from './types/auth';
 import type { FirestoreApi } from './types/firestore';
 import {
     assertEmailOrPhoneNumber,
@@ -15,6 +16,7 @@ import {
  */
 export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSender): AuthApi {
     const _idt = createIdentityClient(ctx);
+    const _verifyIdTokenLocally = createIdTokenVerifier(ctx.projectId, ctx.fetchFn);
     const _fsAuthCollection =
         ctx.allowFirestoreAuthCollection === false ? null : ctx.usersCollection;
 
@@ -24,7 +26,15 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         if (user) await fs.update(_fsAuthCollection, user.localId, data);
     }
 
-    async function verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }> {
+    async function verifyIdToken(
+        idToken: string,
+        options?: VerifyIdTokenOptions
+    ): Promise<{ uid: string; [key: string]: any }> {
+        if (options?.mode === 'local') return _verifyIdTokenLocally(idToken);
+        if (options?.mode !== undefined && options.mode !== 'remote') {
+            throw new FirebaseError('INVALID_ARGUMENT', 'Unsupported ID token verification mode');
+        }
+
         let data: any;
         try {
             data = await _idt.call('/accounts:lookup', { idToken }, 'apiKey');

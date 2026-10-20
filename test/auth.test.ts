@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { createAuth } from '../src/auth';
 import { FirebaseError } from '../src/errors';
 import { createFirestore } from '../src/firestore';
@@ -9,6 +10,9 @@ import {
     FS_DOCS,
     IDT_ADMIN,
     IDT_PUBLIC,
+    PRIVATE_KEY_PEM,
+    PUBLIC_KEY_PEM,
+    PROJECT_ID,
     apiError,
     callsTo,
     commitWrites,
@@ -22,6 +26,8 @@ const NOW = Date.parse('2026-01-01T00:00:00.000Z');
 const NOW_FIELD = { integerValue: String(NOW) };
 
 const PUBLIC_LOOKUP = `POST ${IDT_PUBLIC}/accounts:lookup`;
+const SECURETOKEN_JWKS =
+    'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const ADMIN_LOOKUP = `POST ${IDT_ADMIN}/accounts:lookup`;
 const ADMIN_UPDATE = `POST ${IDT_ADMIN}/accounts:update`;
 const ADMIN_DELETE = `POST ${IDT_ADMIN}/accounts:delete`;
@@ -39,6 +45,44 @@ const user = (o: Record<string, unknown> = {}) => ({
     phoneNumber: '+21 877 675543 54',
     ...o,
 });
+
+const testJwk = {
+    ...createPublicKey(PUBLIC_KEY_PEM).export({ format: 'jwk' }),
+    kid: 'test-key',
+    alg: 'RS256',
+    use: 'sig',
+};
+
+function makeIdToken(claims: Record<string, unknown>) {
+    const encode = (value: string | Buffer) => Buffer.from(value).toString('base64url');
+    const header = encode(JSON.stringify({ alg: 'RS256', kid: 'test-key' }));
+    const payload = encode(JSON.stringify(claims));
+    const unsigned = `${header}.${payload}`;
+    const signature = sign('RSA-SHA256', Buffer.from(unsigned), createPrivateKey(PRIVATE_KEY_PEM));
+    return `${unsigned}.${encode(signature)}`;
+}
+
+function localClaims(overrides: Record<string, unknown> = {}) {
+    const now = Math.floor(NOW / 1000);
+    return {
+        iss: `https://securetoken.google.com/${PROJECT_ID}`,
+        aud: PROJECT_ID,
+        exp: now + 3600,
+        iat: now,
+        sub: 'u1',
+        user_id: 'u1',
+        email: 'ada@example.com',
+        email_verified: true,
+        role: 'admin',
+        ...overrides,
+    };
+}
+
+function jwksResponse(maxAge = 3600) {
+    return new Response(JSON.stringify({ keys: [testJwk] }), {
+        headers: { 'Cache-Control': `public, max-age=${maxAge}` },
+    });
+}
 
 function setup(table: Table, emailSender?: EmailSender) {
     const h = makeCtx(routes(table));
@@ -61,6 +105,85 @@ afterEach(() => {
 
 // ---------------------------------------------------------------------------
 describe('verifyIdToken', () => {
+    it('verifies locally from the token claims without calling Identity Toolkit', async () => {
+        const { auth, calls } = setup([[`GET ${SECURETOKEN_JWKS}`, () => jwksResponse()]]);
+        const token = makeIdToken(localClaims());
+
+        await expect(auth.verifyIdToken(token, { mode: 'local' })).resolves.toMatchObject({
+            uid: 'u1',
+            sub: 'u1',
+            email: 'ada@example.com',
+            emailVerified: true,
+            role: 'admin',
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0].url).toBe(SECURETOKEN_JWKS);
+    });
+
+    it.each([
+        ['expired', localClaims({ exp: Math.floor(NOW / 1000) - 1 })],
+        ['wrong audience', localClaims({ aud: 'another-project' })],
+        ['wrong issuer', localClaims({ iss: 'https://securetoken.google.com/another-project' })],
+        ['future issue time', localClaims({ iat: Math.floor(NOW / 1000) + 1 })],
+        ['empty subject', localClaims({ sub: '' })],
+    ])('rejects a locally verified token with %s claims', async (_name, claims) => {
+        const { auth } = setup([[`GET ${SECURETOKEN_JWKS}`, () => jwksResponse()]]);
+        await expect(
+            auth.verifyIdToken(makeIdToken(claims), { mode: 'local' })
+        ).rejects.toMatchObject({
+            code: 'INVALID_ID_TOKEN',
+            status: 401,
+        });
+    });
+
+    it('rejects a tampered local token signature', async () => {
+        const { auth } = setup([[`GET ${SECURETOKEN_JWKS}`, () => jwksResponse()]]);
+        const token = makeIdToken(localClaims());
+        const [header, payload, encodedSignature] = token.split('.');
+        const signature = Buffer.from(encodedSignature, 'base64url');
+        signature[0] ^= 1;
+
+        await expect(
+            auth.verifyIdToken(`${header}.${payload}.${signature.toString('base64url')}`, {
+                mode: 'local',
+            })
+        ).rejects.toMatchObject({ code: 'INVALID_ID_TOKEN', status: 401 });
+    });
+
+    it('shares concurrent JWKS fetches and caches keys according to Cache-Control', async () => {
+        const { auth, calls } = setup([[`GET ${SECURETOKEN_JWKS}`, () => jwksResponse(10)]]);
+        const token = makeIdToken(localClaims());
+
+        await Promise.all(
+            Array.from({ length: 5 }, () => auth.verifyIdToken(token, { mode: 'local' }))
+        );
+        expect(calls.filter((call) => call.url === SECURETOKEN_JWKS)).toHaveLength(1);
+
+        await auth.verifyIdToken(token, { mode: 'local' });
+        expect(calls.filter((call) => call.url === SECURETOKEN_JWKS)).toHaveLength(1);
+
+        vi.setSystemTime(NOW + 11_000);
+        await auth.verifyIdToken(token, { mode: 'local' });
+        expect(calls.filter((call) => call.url === SECURETOKEN_JWKS)).toHaveLength(2);
+    });
+
+    it('does not cache JWKS when Cache-Control says no-store', async () => {
+        const { auth, calls } = setup([
+            [
+                `GET ${SECURETOKEN_JWKS}`,
+                () =>
+                    new Response(JSON.stringify({ keys: [testJwk] }), {
+                        headers: { 'Cache-Control': 'no-store' },
+                    }),
+            ],
+        ]);
+        const token = makeIdToken(localClaims());
+
+        await auth.verifyIdToken(token, { mode: 'local' });
+        await auth.verifyIdToken(token, { mode: 'local' });
+        expect(calls.filter((call) => call.url === SECURETOKEN_JWKS)).toHaveLength(2);
+    });
+
     it('returns uid, email and claims, and claims can never override uid/email', async () => {
         const { auth, calls } = setup([
             [
@@ -620,12 +743,12 @@ describe('resetUserPassword', () => {
     });
 
     it('treats a void return from the sender as sent', async () => {
-        const { auth } = setup(table(user()), async () => { });
+        const { auth } = setup(table(user()), async () => {});
         expect((await auth.resetUserPassword('u1', 'password1')).emailSent).toBe(true);
     });
 
     it('does not fail the reset when the sender throws', async () => {
-        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         const { auth } = setup(table(user()), async () => {
             throw new Error('smtp down');
         });
@@ -723,10 +846,10 @@ describe('verifyPasswordResetCode', () => {
         reset: Record<string, unknown> | Response,
         existing: Record<string, unknown> | null = user()
     ): Table => [
-            [PUBLIC_RESET, () => reset],
-            [ADMIN_LOOKUP, () => ({ users: existing ? [existing] : [] })],
-            [COMMIT, () => ({})],
-        ];
+        [PUBLIC_RESET, () => reset],
+        [ADMIN_LOOKUP, () => ({ users: existing ? [existing] : [] })],
+        [COMMIT, () => ({})],
+    ];
 
     it('returns the email and records the verification', async () => {
         const { auth, calls } = setup(
