@@ -1,6 +1,6 @@
 # firebase-edge
 
-Firebase Authentication and Firestore helpers that use Google's REST APIs. The package has no runtime dependencies and uses standard `fetch` and Web Crypto APIs.
+Firebase Authentication, Firestore and Cloud Storage helpers that use Google's REST APIs. The package has no runtime dependencies and uses standard `fetch` and Web Crypto APIs.
 
 It is intended for server-side use in Node.js 20+, Deno, Bun, Cloudflare Workers, and Vercel Edge. It uses service-account credentials with administrative access: **never expose your private key to a browser or commit it to your repository.**
 
@@ -20,6 +20,7 @@ FB_CLIENT_EMAIL=firebase-adminsdk@example.iam.gserviceaccount.com
 FB_PRIVATE_KEY_ID=your-private-key-id
 FB_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 FB_API_KEY=your-firebase-web-api-key
+FB_STORAGE_BUCKET=your-project.firebasestorage.app   # optional
 ```
 
 Then create and reuse a client:
@@ -98,10 +99,11 @@ Optional `FirebaseConfig` values:
 | `usersCollection` | `users` | Collection used to mirror Auth user profile data. |
 | `allowFirestoreAuthCollection` | `true` | Set to `false` to disable automatic Auth profile writes to Firestore. |
 | `minAuthPasswordLength` | `6` | Minimum password length checked by password operations. |
+| `storageBucket` | `<projectId>.firebasestorage.app` | Cloud Storage bucket used by `storage`. Projects created before Oct 2024 usually use `<projectId>.appspot.com`. |
 | `emailSender` | — | Async callback used to notify users after an admin password reset. |
 | `fetchFn` | global `fetch` | Optional custom fetch implementation, useful for tests or proxies. |
 
-`configFromEnv(env, overrides?)` reads `FB_PROJECT_ID`, `FB_CLIENT_EMAIL`, `FB_PRIVATE_KEY_ID`, `FB_PRIVATE_KEY`, and `FB_API_KEY`. It also configures the built-in Resend sender when both `FB_RESEND_API_KEY` and `FB_RESEND_EMAIL_FROM` are set. Pass optional client settings in `overrides`.
+`configFromEnv(env, overrides?)` reads `FB_PROJECT_ID`, `FB_CLIENT_EMAIL`, `FB_PRIVATE_KEY_ID`, `FB_PRIVATE_KEY`, and `FB_API_KEY`, plus the optional `FB_STORAGE_BUCKET`. It also configures the built-in Resend sender when both `FB_RESEND_API_KEY` and `FB_RESEND_EMAIL_FROM` are set. Pass optional client settings in `overrides`.
 
 To use Resend directly, call `resendEmailSender({ apiKey, from })` and pass the result as `emailSender`. A custom sender can implement the exported `EmailSender` type.
 
@@ -195,6 +197,51 @@ When `allowFirestoreAuthCollection` is enabled (the default), Auth operations mi
 
 The timestamps in these profile fields are epoch milliseconds. Custom claims are stored in Firebase Auth, not in the profile document.
 
+## Cloud Storage
+
+`firebase.storage` talks to the Cloud Storage JSON API for your Firebase bucket using the service account. **This is administrative access: Firebase Security Rules do not apply**, so enforce your own authorization before calling it with user-supplied paths. The service account needs a role such as Storage Object Admin on the bucket.
+
+| Method | Purpose |
+| --- | --- |
+| `upload(path, data, options?)` | Uploads a `string`, `Uint8Array`/`ArrayBuffer` or `Blob` and returns the object's metadata. Uses a multipart request, or a resumable session above 8 MiB. |
+| `download(path)` | Returns the bytes, or `null` if the object does not exist. |
+| `downloadStream(path)` | Same, but as a `ReadableStream`, e.g. to proxy a file from a Worker. |
+| `getMetadata(path)` | Returns the object's metadata, or `null` if it does not exist. |
+| `updateMetadata(path, options)` | Updates content type, cache control, disposition or custom metadata (a `null` value removes a key). |
+| `list({ prefix, delimiter, limit, pageToken })` | Returns `{ objects, prefixes, nextPageToken }`. `limit` defaults to 100 (max 1000). |
+| `delete(path)` | Deletes the object. Deleting a missing object is a no-op. |
+| `getDownloadUrl(path)` | Returns a Firebase-style tokenized URL (like `getDownloadURL()` in the client SDK), creating a token if needed. |
+| `signedUrl(path, options?)` | Returns a V4 signed URL for `GET`, `PUT`, `DELETE` or `HEAD`. Signed locally, no network request. |
+
+```ts
+const { storage } = firebase;
+
+await storage.upload('avatars/ada.png', pngBytes, {
+  contentType: 'image/png',
+  cacheControl: 'public, max-age=86400',
+  metadata: { owner: uid },
+  ifGenerationMatch: 0, // fail instead of overwriting
+});
+
+const bytes = await storage.download('avatars/ada.png'); // Uint8Array | null
+const { objects, prefixes } = await storage.list({ prefix: 'avatars/', delimiter: '/' });
+
+// Let a browser upload directly, or download with a time limit
+const uploadUrl = await storage.signedUrl('avatars/ada.png', {
+  method: 'PUT',
+  contentType: 'image/png', // the client must send this exact Content-Type
+  expiresIn: 600,
+});
+const downloadUrl = await storage.signedUrl('avatars/ada.png', {
+  responseDisposition: 'attachment; filename="ada.png"',
+});
+
+// Long-lived public-by-link URL, same as the client SDK's getDownloadURL()
+const permanentUrl = await storage.getDownloadUrl('avatars/ada.png');
+```
+
+Object names follow Cloud Storage rules: 1 to 1,024 bytes, no leading `/`, and no `.` or `..` segments. Signed URLs last at most 7 days. Failures are thrown as `FirebaseError` with the Cloud Storage error reason (for example `conditionNotMet`) as `code`.
+
 ## Errors
 
 API errors are thrown as `FirebaseError`, which exposes a Firebase-style `code` and, when available, an HTTP `status`:
@@ -230,6 +277,6 @@ pnpm run test:runtime
 
 ## Scope and limitations
 
-This is a small Auth and Firestore REST client, not a complete replacement for `firebase-admin`. It does not provide, Cloud Messaging, session cookies, or multi-tenancy support. `firestore.list()` runs a single query and returns at most 500 documents per page; use its page token to fetch more.
+This is a small Auth, Firestore and Cloud Storage REST client, not a complete replacement for `firebase-admin`. It does not provide Cloud Messaging, session cookies, or multi-tenancy support. Storage uploads are buffered in memory (no streaming uploads), and object copy/compose are not included. `firestore.list()` runs a single query and returns at most 500 documents per page; use its page token to fetch more.
 
 Because the service-account key grants administrative access, keep it in your deployment platform's secret manager and restrict access to it. Never ship it to browsers or commit it to the repository.
