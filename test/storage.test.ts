@@ -92,7 +92,7 @@ describe('storage.upload', () => {
         expect(text(calls[1].body)).toMatch(/"firebaseStorageDownloadTokens":"[0-9a-f-]{36}"/);
     });
 
-    it('uses a resumable session for large objects', async () => {
+    it('throws error for large file size', async () => {
         const session = 'https://storage.googleapis.com/upload/storage/v1/b/x/o?upload_id=abc';
         const { ctx, calls } = makeCtx(
             routes([
@@ -104,12 +104,11 @@ describe('storage.upload', () => {
             ])
         );
         const big = new Uint8Array(9 * 1024 * 1024);
-        const result = await createStorage(ctx).upload('big.bin', big);
-        expect(result.size).toBe(big.length);
-        expect(calls[0].url).toBe(`${UPLOAD}?uploadType=resumable`);
-        expect(calls[0].headers['X-Upload-Content-Length']).toBe(String(big.length));
-        expect(calls[1].method).toBe('PUT');
-        expect((calls[1].body as Uint8Array).length).toBe(big.length);
+        await expect(createStorage(ctx).upload('big.bin', big)).rejects.toMatchObject({
+            name: 'FirebaseError',
+            code: 'INVALID_ARGUMENT',
+            message: "Storage uploads are limited to 8 MiB;"
+        });
     });
 
     it('throws FirebaseError with the GCS reason and status on failure', async () => {

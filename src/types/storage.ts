@@ -71,6 +71,7 @@ export interface SignedUrlOptions {
 export interface StorageApi {
     /** The bucket this client operates on. */
     readonly bucket: string;
+    /** Uploads an object up to 8 MiB using a multipart request. Resumable uploads are not supported. */
     upload(path: string, data: StorageData, options?: UploadOptions): Promise<StorageObject>;
     /** Returns the object's bytes, or `null` if it does not exist. */
     download(path: string): Promise<Uint8Array | null>;

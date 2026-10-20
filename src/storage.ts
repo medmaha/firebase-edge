@@ -24,7 +24,7 @@ import {
 const STORAGE_API = 'https://storage.googleapis.com/storage/v1';
 const STORAGE_UPLOAD_API = 'https://storage.googleapis.com/upload/storage/v1';
 const STORAGE_HOST = 'storage.googleapis.com';
-const RESUMABLE_THRESHOLD = 8 * 1024 * 1024;
+const MAX_UPLOAD_SIZE = 8 * 1024 * 1024;
 const MAX_SIGNED_URL_SECONDS = 604800; // 7 days (V4 limit)
 const TOKEN_KEY = 'firebaseStorageDownloadTokens';
 
@@ -36,12 +36,11 @@ export const SCOPE_STORAGE = 'https://www.googleapis.com/auth/devstorage.read_wr
  * Note: this is administrative access. Firebase Security Rules do not apply.
  */
 export function createStorage(ctx: Context): StorageApi {
-    const bucket = ctx.storageBucket;
-    const bucketBase = `${STORAGE_API}/b/${encodeURIComponent(bucket)}/o`;
-    const uploadBase = `${STORAGE_UPLOAD_API}/b/${encodeURIComponent(bucket)}/o`;
-    const objectUrl = (path: string) => `${bucketBase}/${encodeURIComponent(path)}`;
+    const _bucket = ctx.storageBucket;
+    const _bucketBase = `${STORAGE_API}/b/${encodeURIComponent(_bucket)}/o`;
+    const _uploadBase = `${STORAGE_UPLOAD_API}/b/${encodeURIComponent(_bucket)}/o`;
 
-    async function request(url: string, init: RequestInit, fallback: string): Promise<Response> {
+    async function _request(url: string, init: RequestInit, fallback: string): Promise<Response> {
         const token = await ctx.getAccessToken(SCOPE_STORAGE);
         const res = await ctx.fetchFn(url, {
             ...init,
@@ -62,6 +61,17 @@ export function createStorage(ctx: Context): StorageApi {
         return res;
     }
 
+    async function _downloadResponse(path: string): Promise<Response | null> {
+        assertObjectName(path);
+        const res = await _request(
+            `${_objectUrl(path)}?alt=media`,
+            { method: 'GET' },
+            'Storage download failed'
+        );
+        return res.status === 404 ? null : res;
+    }
+
+    const _objectUrl = (path: string) => `${_bucketBase}/${encodeURIComponent(path)}`;
     const notFound = (what: string) => new FirebaseError('NOT_FOUND', `${what} not found`, 404);
 
     async function upload(
@@ -71,8 +81,14 @@ export function createStorage(ctx: Context): StorageApi {
     ): Promise<StorageObject> {
         assertObjectName(path);
         const { bytes, defaultType } = await toBytes(data);
-        const contentType = options.contentType ?? defaultType;
+        if (bytes.length > MAX_UPLOAD_SIZE) {
+            throw new FirebaseError(
+                'INVALID_ARGUMENT',
+                'Storage uploads are limited to 8 MiB;'
+            );
+        }
 
+        const contentType = options.contentType ?? defaultType;
         const metadata: Record<string, string> = { ...(options.metadata ?? {}) };
         if (options.downloadToken) {
             metadata[TOKEN_KEY] =
@@ -93,71 +109,28 @@ export function createStorage(ctx: Context): StorageApi {
             params.set('ifGenerationMatch', String(options.ifGenerationMatch));
         }
 
-        let res: Response;
-        if (bytes.length > RESUMABLE_THRESHOLD) {
-            params.set('uploadType', 'resumable');
-            const init = await request(
-                `${uploadBase}?${params}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'X-Upload-Content-Type': contentType,
-                        'X-Upload-Content-Length': String(bytes.length),
-                    },
-                    body: JSON.stringify(resource),
-                },
-                'Storage upload failed'
-            );
-            const session = init.headers.get('Location');
-            if (init.status === 404) throw notFound(`Bucket ${bucket}`);
-            if (!session)
-                throw new FirebaseError(
-                    'STORAGE_ERROR',
-                    'Storage did not return an upload session URL'
-                );
-            res = await request(
-                session,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': contentType },
-                    body: bytes as BodyInit,
-                },
-                'Storage upload failed'
-            );
-        } else {
-            params.set('uploadType', 'multipart');
-            const multipart = buildMultipart(resource, bytes, contentType);
-            res = await request(
-                `${uploadBase}?${params}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': multipart.contentType },
-                    body: multipart.body as BodyInit,
-                },
-                'Storage upload failed'
-            );
-        }
-        if (res.status === 404) throw notFound(`Bucket ${bucket}`);
+        params.set('uploadType', 'multipart');
+        const multipart = buildMultipart(resource, bytes, contentType);
+        const res = await _request(
+            `${_uploadBase}?${params}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': multipart.contentType },
+                body: multipart.body as BodyInit,
+            },
+            'Storage upload failed'
+        );
+        if (res.status === 404) throw notFound(`Bucket ${_bucket}`);
         return toStorageObject(await res.json());
     }
 
-    async function downloadResponse(path: string): Promise<Response | null> {
-        assertObjectName(path);
-        const res = await request(
-            `${objectUrl(path)}?alt=media`,
-            { method: 'GET' },
-            'Storage download failed'
-        );
-        return res.status === 404 ? null : res;
-    }
-
     async function download(path: string): Promise<Uint8Array | null> {
-        const res = await downloadResponse(path);
+        const res = await _downloadResponse(path);
         return res ? new Uint8Array(await res.arrayBuffer()) : null;
     }
 
     async function downloadStream(path: string): Promise<ReadableStream<Uint8Array> | null> {
-        const res = await downloadResponse(path);
+        const res = await _downloadResponse(path);
         return res
             ? ((res.body as ReadableStream<Uint8Array> | null) ?? new Blob([]).stream())
             : null;
@@ -165,8 +138,8 @@ export function createStorage(ctx: Context): StorageApi {
 
     async function getMetadata(path: string): Promise<StorageObject | null> {
         assertObjectName(path);
-        const res = await request(
-            objectUrl(path),
+        const res = await _request(
+            _objectUrl(path),
             { method: 'GET' },
             'Storage metadata read failed'
         );
@@ -178,8 +151,8 @@ export function createStorage(ctx: Context): StorageApi {
         options: UpdateMetadataOptions
     ): Promise<StorageObject> {
         assertObjectName(path);
-        const res = await request(
-            objectUrl(path),
+        const res = await _request(
+            _objectUrl(path),
             { method: 'PATCH', body: JSON.stringify(options) },
             'Storage metadata update failed'
         );
@@ -194,12 +167,12 @@ export function createStorage(ctx: Context): StorageApi {
         params.set('maxResults', String(Math.min(query.limit || 100, 1000)));
         if (query.pageToken) params.set('pageToken', query.pageToken);
 
-        const res = await request(
-            `${bucketBase}?${params}`,
+        const res = await _request(
+            `${_bucketBase}?${params}`,
             { method: 'GET' },
             'Storage list failed'
         );
-        if (res.status === 404) throw notFound(`Bucket ${bucket}`);
+        if (res.status === 404) throw notFound(`Bucket ${_bucket}`);
         const body: any = await res.json();
         return {
             objects: ((body.items ?? []) as any[]).map(toStorageObject),
@@ -210,7 +183,7 @@ export function createStorage(ctx: Context): StorageApi {
 
     async function remove(path: string): Promise<void> {
         assertObjectName(path);
-        await request(objectUrl(path), { method: 'DELETE' }, 'Storage delete failed');
+        await _request(_objectUrl(path), { method: 'DELETE' }, 'Storage delete failed');
     }
 
     async function getDownloadUrl(path: string): Promise<string> {
@@ -222,7 +195,7 @@ export function createStorage(ctx: Context): StorageApi {
             meta = await updateMetadata(path, { metadata: { [TOKEN_KEY]: token } });
         }
         return (
-            `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}` +
+            `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(_bucket)}` +
             `/o/${encodeURIComponent(path)}?alt=media&token=${token}`
         );
     }
@@ -263,7 +236,7 @@ export function createStorage(ctx: Context): StorageApi {
             .map(([k, v]) => `${k}=${v}`)
             .join('&');
 
-        const canonicalPath = `/${bucket}/${uriEncode(path, false)}`;
+        const canonicalPath = `/${_bucket}/${uriEncode(path, false)}`;
         const canonicalRequest = [
             method,
             canonicalPath,
@@ -286,7 +259,7 @@ export function createStorage(ctx: Context): StorageApi {
     }
 
     return {
-        bucket,
+        bucket: _bucket,
         upload,
         download,
         downloadStream,
