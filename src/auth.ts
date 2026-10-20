@@ -1,4 +1,4 @@
-import { FirebaseError } from './errors';
+import { FirebaseError, invalidIdTokenError } from './errors';
 import { createIdentityClient } from './identity';
 import { createIdTokenVerifier } from './jwks';
 import type { Context, EmailSender } from './types';
@@ -39,10 +39,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         try {
             data = await _idt.call('/accounts:lookup', { idToken }, 'apiKey');
         } catch {
-            throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
+            throw invalidIdTokenError();
         }
         const user = data.users?.[0];
-        if (!user) throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
+        if (!user) throw invalidIdTokenError();
         if (user.disabled) throw new FirebaseError('USER_DISABLED', 'User is disabled', 403);
 
         let customClaims: Record<string, any> = {};

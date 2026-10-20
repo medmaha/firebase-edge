@@ -1,4 +1,5 @@
-import { FirebaseError } from './errors';
+import { FirebaseError, invalidIdTokenError } from './errors';
+import { base64UrlDecode, base64UrlDecodeJson } from './utils';
 
 const SECURETOKEN_JWKS_URL =
     'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
@@ -22,36 +23,21 @@ interface IdTokenClaims extends Record<string, unknown> {
     sub: string;
 }
 
-function invalidToken(): FirebaseError {
-    return new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
-}
-
 function invalidJwks(): FirebaseError {
     return new FirebaseError('INVALID_JWKS_RESPONSE', 'Google returned invalid signing keys', 502);
 }
 
-function decodeBase64Url(value: string): Uint8Array {
-    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) throw invalidToken();
-    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-    try {
-        return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-    } catch {
-        throw invalidToken();
-    }
-}
-
 function decodeJsonSegment(value: string): Record<string, unknown> {
+    let parsed: unknown;
     try {
-        const parsed: unknown = JSON.parse(
-            new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64Url(value))
-        );
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw invalidToken();
-        return parsed as Record<string, unknown>;
-    } catch (error) {
-        if (error instanceof FirebaseError) throw error;
-        throw invalidToken();
+        parsed = base64UrlDecodeJson(value);
+    } catch {
+        throw invalidIdTokenError();
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw invalidIdTokenError();
+    }
+    return parsed as Record<string, unknown>;
 }
 
 function cacheLifetime(response: Response): number {
@@ -161,13 +147,13 @@ export function createIdTokenVerifier(projectId: string, fetchFn: typeof fetch) 
         idToken: string
     ): Promise<{ uid: string; [key: string]: any }> {
         const segments = idToken.split('.');
-        if (segments.length !== 3) throw invalidToken();
+        if (segments.length !== 3) throw invalidIdTokenError();
 
         const [encodedHeader, encodedPayload, encodedSignature] = segments;
         const header = decodeJsonSegment(encodedHeader);
         const claims = decodeJsonSegment(encodedPayload) as IdTokenClaims;
         if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid) {
-            throw invalidToken();
+            throw invalidIdTokenError();
         }
 
         const now = Math.floor(Date.now() / 1000);
@@ -184,12 +170,17 @@ export function createIdTokenVerifier(projectId: string, fetchFn: typeof fetch) 
             typeof claims.sub !== 'string' ||
             claims.sub.length === 0
         ) {
-            throw invalidToken();
+            throw invalidIdTokenError();
         }
 
-        const decodedSignature = decodeBase64Url(encodedSignature);
+        let decodedSignature: Uint8Array;
+        try {
+            decodedSignature = base64UrlDecode(encodedSignature);
+        } catch {
+            throw invalidIdTokenError();
+        }
         const key = await getVerificationKey(header.kid);
-        if (!key) throw invalidToken();
+        if (!key) throw invalidIdTokenError();
 
         const signature = new ArrayBuffer(decodedSignature.byteLength);
         new Uint8Array(signature).set(decodedSignature);
@@ -202,9 +193,9 @@ export function createIdTokenVerifier(projectId: string, fetchFn: typeof fetch) 
                 new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)
             );
         } catch {
-            throw invalidToken();
+            throw invalidIdTokenError();
         }
-        if (!validSignature) throw invalidToken();
+        if (!validSignature) throw invalidIdTokenError();
 
         return {
             ...claims,
