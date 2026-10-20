@@ -43,6 +43,8 @@ export function createGF(config: FirebaseConfig) {
     apiKey: config.apiKey,
     databaseName: config.databaseName ?? "default",
     usersCollection: config.usersCollection ?? 'users',
+    minAuthPasswordLength: config.minAuthPasswordLength,
+    allowFirestoreAuthCollection: config.allowFirestoreAuthCollection,
     fetchFn: fetchFn,
     getAccessToken,
   };
