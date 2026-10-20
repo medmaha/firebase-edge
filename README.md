@@ -1,71 +1,235 @@
-# @inoblend/google-firebase-apis
+# firebase-edge
 
-Firebase Auth + Firestore admin utilities over plain REST. **Zero dependencies**, using standard `fetch` and Web Crypto APIs, so it runs on Cloudflare Workers, Vercel Edge, Deno, Bun and Node 20+.
+Firebase Authentication and Firestore helpers that use Google's REST APIs. The package has no runtime dependencies and uses standard `fetch` and Web Crypto APIs.
 
-This is a **server-side library**. It uses service-account credentials with administrative access; never bundle its private key into a browser or other untrusted client.
+It is intended for server-side use in Node.js 20+, Deno, Bun, Cloudflare Workers, and Vercel Edge. It uses service-account credentials with administrative access: **never expose your private key to a browser or commit it to your repository.**
 
 ## Install
 
-```bash
-npm i @inoblend/google-firebase-apis
+```sh
+npm install firebase-edge
 ```
 
-## Usage
+## Quick start
+
+Set the required environment variables:
+
+```text
+FB_PROJECT_ID=your-firebase-project-id
+FB_CLIENT_EMAIL=firebase-adminsdk@example.iam.gserviceaccount.com
+FB_PRIVATE_KEY_ID=your-private-key-id
+FB_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FB_API_KEY=your-firebase-web-api-key
+```
+
+Then create and reuse a client:
 
 ```ts
-import { createGF, configFromEnv, generateDocId } from '@inoblend/google-firebase-apis';
+import {
+  configFromEnv,
+  createFirebaseEdge,
+  generateDocId,
+} from 'firebase-edge';
 
-// Create once per isolate/process and reuse (token + key caches live in the client)
-const fb = createGF(configFromEnv(process.env));
+const firebase = createFirebaseEdge(configFromEnv(process.env));
 
-const { uid } = await fb.auth.createUser({
-  email: 'a@b.com', password: 'secret123', displayName: 'Ada',
-  role: 'admin',                    // stored on the Firestore user doc
-  claims: { role: 'admin' },        // optional: set as custom claims on the Auth user
+const { uid } = await firebase.auth.createUser({
+  email: 'ada@example.com',
+  password: 'correct-horse-battery',
+  displayName: 'Ada Lovelace',
+  claims: { role: 'admin' },
 });
 
-const decoded = await fb.auth.verifyIdToken(idToken);   // { uid, email, ...claims }
-await fb.firestore.set('orders', generateDocId(), { total: 42.5 });
-await fb.firestore.set('orders', id, { status: 'paid' }, { merge: true });
-const order = await fb.firestore.get('orders', id);     // decoded data or null
+const tokenInfo = await firebase.auth.verifyIdToken(idToken);
+await firebase.firestore.set('orders', generateDocId(), { total: 42.5 });
 ```
 
-### Cloudflare Workers
+Create one client per process or isolate and reuse it. The client caches access tokens between requests.
+
+## Cloudflare Workers
+
+Keep the client in the module scope so it is reused within an isolate. Store credentials as Worker secrets, not in source code:
 
 ```ts
-let fb: FirebaseClient | undefined;
+import { createFirebaseEdge, type FirebaseClient } from 'firebase-edge';
+
+interface Env {
+  FB_PROJECT_ID: string;
+  FB_CLIENT_EMAIL: string;
+  FB_PRIVATE_KEY_ID: string;
+  FB_PRIVATE_KEY: string;
+  FB_API_KEY: string;
+}
+
+let firebase: FirebaseClient | undefined;
+
 export default {
-  async fetch(req: Request, env: Env) {
-    fb ??= createGF(configFromEnv(env as any));
-    // ...
+  async fetch(request: Request, env: Env): Promise<Response> {
+    firebase ??= createFirebaseEdge({
+      projectId: env.FB_PROJECT_ID,
+      clientEmail: env.FB_CLIENT_EMAIL,
+      privateKeyId: env.FB_PRIVATE_KEY_ID,
+      privateKey: env.FB_PRIVATE_KEY,
+      apiKey: env.FB_API_KEY,
+    });
+
+    return new Response('Firebase client is ready');
   },
 };
 ```
 
-### Config
+## Configuration
 
-| Option | Notes |
-|---|---|
-| `projectId`, `clientEmail`, `privateKey`, `privateKeyId` | From your service account JSON. `\n` escapes in the key are handled. |
-| `apiKey` | Web API key (public Identity Toolkit endpoints). |
-| `usersCollection` | Default `"users"`. |
-| `emailSender` | `(msg) => Promise<boolean>`. Use `resendEmailSender({ apiKey, from })` or your own. |
-| `fetchFn` | Optional custom fetch implementation. |
+`createFirebaseEdge()` requires the following values:
 
-`configFromEnv` reads `GF_PROJECT_ID`, `GF_CLIENT_EMAIL`, `GF_PRIVATE_KEY_ID`, `GF_PRIVATE_KEY`, `GF_API_KEY`, and optionally `GF_RESEND_API_KEY` + `GF_RESEND_EMAIL_FROM`.
+| Option | Description |
+| --- | --- |
+| `projectId` | Firebase project ID. |
+| `clientEmail` | Service-account email address. |
+| `privateKeyId` | Service-account private key ID. |
+| `privateKey` | Service-account PEM private key. Escaped `\n` sequences and wrapping quotes are handled. |
+| `apiKey` | Firebase Web API key, used for public Identity Toolkit endpoints. |
 
-## API
+Optional `FirebaseConfig` values:
 
-**`fb.auth`**: `verifyIdToken`, `createUser`, `updateUser`, `setCustomUserClaims`, `disableUser`, `deleteUserPermanent`, `resetUserPassword`, `requestPasswordReset`, `verifyPasswordResetCode`, `confirmPasswordReset`
+| Option | Default | Description |
+| --- | --- | --- |
+| `databaseName` | `default` | Firestore database name. |
+| `usersCollection` | `users` | Collection used to mirror Auth user profile data. |
+| `allowFirestoreAuthCollection` | `true` | Set to `false` to disable automatic Auth profile writes to Firestore. |
+| `minAuthPasswordLength` | `6` | Minimum password length checked by password operations. |
+| `emailSender` | — | Async callback used to notify users after an admin password reset. |
+| `fetchFn` | global `fetch` | Optional custom fetch implementation, useful for tests or proxies. |
 
-**`fb.firestore`**: `set` (replace or `{ merge: true }`), `update` (partial + atomic `increments`), `get`, `list` (single filtered/ordered query; up to 500 documents), `listPage` (filtered/ordered cursor pagination; pass each `nextPageToken` as `pageToken`), `delete`
+`configFromEnv(env, overrides?)` reads `FB_PROJECT_ID`, `FB_CLIENT_EMAIL`, `FB_PRIVATE_KEY_ID`, `FB_PRIVATE_KEY`, and `FB_API_KEY`. It also configures the built-in Resend sender when both `FB_RESEND_API_KEY` and `FB_RESEND_EMAIL_FROM` are set. Pass optional client settings in `overrides`.
 
-Errors are thrown as `FirebaseError` with a `.code` (`EMAIL_EXISTS`, `WEAK_PASSWORD`, `USER_NOT_FOUND`, `INVALID_ID_TOKEN`, `USER_DISABLED`, ...).
+To use Resend directly, call `resendEmailSender({ apiKey, from })` and pass the result as `emailSender`. A custom sender can implement the exported `EmailSender` type.
 
-## Firestore user doc fields
+## Authentication
 
-`email, displayName, phoneNumber, role, disabled, disabledAt, passwordResetCount, passwordResetAt, passwordResetLinkSentAt, passwordResetLinkVerifiedAt, passwordResetConfirmedAt, createdAt, updatedAt`. Timestamps are epoch milliseconds (numbers).
+The `auth` client provides:
 
-## Runtime compatibility checks
+| Method | Purpose |
+| --- | --- |
+| `createUser(options)` | Creates an Auth user and, by default, a matching Firestore profile. Requires a password and either an email or phone number. |
+| `verifyIdToken(token)` | Looks up and verifies the ID token with Firebase, returning the UID, email, verification state, and custom claims. |
+| `setCustomUserClaims(uid, claims)` | Sets the user's custom claims in Auth. This replaces the custom-claims object. |
+| `updateUser(uid, fields)` | Updates supported Auth fields and the Firestore profile. Passwords are not copied into Firestore. |
+| `disableUser(uid, disabled?)` | Sets the disabled state, or toggles it when `disabled` is omitted. |
+| `deleteUserPermanent(uid)` | Permanently deletes the Auth user and its mirrored Firestore profile. |
+| `resetUserPassword(uid, newPassword)` | Changes the password, revokes existing sessions, and attempts to notify the user. Returns `{ uid, emailSent }`. |
+| `requestPasswordReset(email, continueUrl?)` | Requests a Firebase password-reset email without revealing whether the address is registered. |
+| `verifyPasswordResetCode(oobCode)` | Checks a password-reset code and returns the associated email. |
+| `confirmPasswordReset(oobCode, newPassword)` | Completes a password reset with the code and new password. |
 
-CI checks Node.js 20, 22 and 24, and runs a dependency-free smoke test against the built package on Node.js, Deno and Bun. Run the Node.js smoke test locally with `pnpm run test:runtime`.
+Pass custom claims when creating a user or set them later:
+
+```ts
+await firebase.auth.setCustomUserClaims(uid, { role: 'admin' });
+```
+
+Claims are stored on the Auth user; they are not automatically copied into the Firestore profile. Custom claims are limited to 1,000 bytes.
+
+`verifyIdToken()` makes a network request to Firebase for each verification. This lets it detect disabled users and return current claims, but adds request latency and uses the Identity Toolkit API.
+
+## Firestore
+
+The `firestore` client provides `set`, `update`, `get`, `list`, and `delete`.
+
+```ts
+await firebase.firestore.set('orders', 'order-123', { status: 'pending' });
+await firebase.firestore.set(
+  'orders',
+  'order-123',
+  { status: 'paid' },
+  { merge: true },
+);
+
+await firebase.firestore.update(
+  'orders',
+  'order-123',
+  { status: 'paid' },
+  { increments: { attempts: 1 } },
+);
+
+const order = await firebase.firestore.get<{ status: string }>(
+  'orders',
+  'order-123',
+);
+```
+
+`set()` replaces the document unless `{ merge: true }` is provided. `update()` writes only the supplied fields and can atomically increment numeric fields. `get()` returns decoded document data or `null` if the document does not exist. Deleting a missing document is a no-op.
+
+### Query and paginate
+
+`list()` returns `{ documents, nextPageToken }`. It accepts one field filter, optional ordering, and a page size (100 by default, capped at 500):
+
+```ts
+const firstPage = await firebase.firestore.list('orders', {
+  field: 'status',
+  op: 'EQUAL',
+  value: 'paid',
+  orderBy: 'createdAt',
+  direction: 'DESCENDING',
+  limit: 100,
+});
+
+if (firstPage.nextPageToken) {
+  const nextPage = await firebase.firestore.list('orders', {
+    field: 'status',
+    op: 'EQUAL',
+    value: 'paid',
+    orderBy: 'createdAt',
+    direction: 'DESCENDING',
+    limit: 100,
+    pageToken: firstPage.nextPageToken,
+  });
+}
+```
+
+Each document in `documents` contains its decoded fields and an `id`. Page tokens are opaque and are only valid for the same collection and query.
+
+## Firestore user profiles
+
+When `allowFirestoreAuthCollection` is enabled (the default), Auth operations mirror profile and password-reset metadata to `usersCollection`. New profiles include fields such as `email`, `displayName`, `phoneNumber`, `disabled`, `disabledAt`, `passwordResetCount`, `createdAt`, and `updatedAt`. Password-reset operations may add `passwordResetAt`, `passwordResetLinkSentAt`, `passwordResetLinkVerifiedAt`, and `passwordResetConfirmedAt`.
+
+The timestamps in these profile fields are epoch milliseconds. Custom claims are stored in Firebase Auth, not in the profile document.
+
+## Errors
+
+API errors are thrown as `FirebaseError`, which exposes a Firebase-style `code` and, when available, an HTTP `status`:
+
+```ts
+import { FirebaseError } from 'firebase-edge';
+
+try {
+  await firebase.auth.verifyIdToken(token);
+} catch (error) {
+  if (error instanceof FirebaseError) {
+    console.error(error.code, error.status);
+  }
+  throw error;
+}
+```
+
+## Runtime support
+
+The package requires Node.js 20 or later and is built on standard `fetch` and Web Crypto APIs.
+
+| Runtime | Notes |
+| --- | --- |
+| Node.js | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24. |
+| Deno and Bun | CI has portable-runtime smoke-test jobs. |
+| Cloudflare Workers and Vercel Edge | Designed for these Web API-based runtimes; the current CI workflow does not run a Workers or Vercel Edge isolate test. |
+
+Run the Node.js smoke test locally with:
+
+```sh
+pnpm run test:runtime
+```
+
+## Scope and limitations
+
+This is a small Auth and Firestore REST client, not a complete replacement for `firebase-admin`. It does not provide, Cloud Messaging, session cookies, or multi-tenancy support. `firestore.list()` runs a single query and returns at most 500 documents per page; use its page token to fetch more.
+
+Because the service-account key grants administrative access, keep it in your deployment platform's secret manager and restrict access to it. Never ship it to browsers or commit it to the repository.

@@ -1,4 +1,4 @@
-import { createGF, generateDocId } from "../dist/index.js";
+import { createFirebaseEdge, generateDocId } from "../dist/index.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -109,7 +109,7 @@ const fetchFn = async (input, init = {}) => {
   throw new Error(`Unexpected request: ${url}`);
 };
 
-const firebase = createGF({
+const firebase = createFirebaseEdge({
   projectId: "runtime-smoke",
   clientEmail: "runtime-smoke@example.test",
   privateKeyId: "runtime-smoke-key",
@@ -118,7 +118,7 @@ const firebase = createGF({
   fetchFn,
 });
 
-const firstPage = await firebase.firestore.listPage("items", { limit: 1 });
+const firstPage = await firebase.firestore.list("items", { limit: 1 });
 assert(
   firstPage.documents[0]?.id === "a",
   "First page document was not decoded",
@@ -129,7 +129,7 @@ assert(
   "First page did not return a continuation token",
 );
 
-const secondPage = await firebase.firestore.listPage("items", {
+const secondPage = await firebase.firestore.list("items", {
   limit: 1,
   pageToken: firstPage.nextPageToken,
 });
