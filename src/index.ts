@@ -17,11 +17,11 @@ export type { FirebaseConfig, EmailSender, EmailMessage } from './types';
  * @returns An object containing initialized auth, firestore, and token provider utilities.
  * @throws {Error} If any required configuration values are missing.
  */
-export function createGF(config: FirebaseConfig) {
+export function createFirebaseEdge(config: FirebaseConfig) {
   const required = ['projectId', 'clientEmail', 'privateKey', 'privateKeyId', 'apiKey'] as const;
   const missing = required.filter((k) => !config[k]);
   if (missing.length) {
-    throw new Error(`createGF: missing config values: ${missing.join(', ')}`);
+    throw new Error(`createFirebaseEdge: missing config values: ${missing.join(', ')}`);
   }
 
   // Wrapped so an unbound global fetch never throws "Illegal invocation" on Workers
@@ -55,13 +55,13 @@ export function createGF(config: FirebaseConfig) {
   return { auth, firestore, getAccessToken };
 }
 
-export type FirebaseClient = ReturnType<typeof createGF>;
+export type FirebaseClient = ReturnType<typeof createFirebaseEdge>;
 
 /**
  * Build a config from an env-like object. Works with Workers' `env`,
  * `process.env`, `Deno.env.toObject()`, etc.
- * Reads GF_PROJECT_ID, GF_CLIENT_EMAIL, GF_PRIVATE_KEY_ID,
- * GF_PRIVATE_KEY, GF_API_KEY and optionally GF_RESEND_API_KEY + GF_RESEND_EMAIL_FROM.
+ * Reads FB_PROJECT_ID, FB_CLIENT_EMAIL, FB_PRIVATE_KEY_ID,
+ * FB_PRIVATE_KEY, FB_API_KEY and optionally FB_RESEND_API_KEY + FB_RESEND_EMAIL_FROM.
  * 
  * @param env - The environment variables record mapping string keys to values.
  * @param overrides - Optional configuration properties to override values from the environment.
@@ -72,14 +72,14 @@ export function configFromEnv(
   overrides: Partial<FirebaseConfig> = {}
 ): FirebaseConfig {
   return {
-    projectId: env.GF_PROJECT_ID!,
-    clientEmail: env.GF_CLIENT_EMAIL!,
-    privateKeyId: env.GF_PRIVATE_KEY_ID!,
-    privateKey: env.GF_PRIVATE_KEY!,
-    apiKey: env.GF_API_KEY!,
+    projectId: env.FB_PROJECT_ID!,
+    clientEmail: env.FB_CLIENT_EMAIL!,
+    privateKeyId: env.FB_PRIVATE_KEY_ID!,
+    privateKey: env.FB_PRIVATE_KEY!,
+    apiKey: env.FB_API_KEY!,
     emailSender:
-      env.GF_RESEND_API_KEY && env.GF_RESEND_EMAIL_FROM
-        ? resendEmailSender({ apiKey: env.GF_RESEND_API_KEY, from: env.GF_RESEND_EMAIL_FROM })
+      env.FB_RESEND_API_KEY && env.FB_RESEND_EMAIL_FROM
+        ? resendEmailSender({ apiKey: env.FB_RESEND_API_KEY, from: env.FB_RESEND_EMAIL_FROM })
         : undefined,
     ...overrides,
   };

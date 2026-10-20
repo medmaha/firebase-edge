@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FirebaseError, configFromEnv, createGF, generateDocId, resendEmailSender } from '../src';
+import { FirebaseError, configFromEnv, createFirebaseEdge, generateDocId, resendEmailSender } from '../src';
 import {
   API_KEY,
   DATABASE_NAME,
@@ -26,18 +26,18 @@ const config = (extra: Record<string, unknown> = {}) => ({
 });
 
 const ENV = {
-  GF_PROJECT_ID: PROJECT_ID,
-  GF_CLIENT_EMAIL: 'svc@test-project.iam.gserviceaccount.com',
-  GF_PRIVATE_KEY_ID: 'kid-1',
-  GF_PRIVATE_KEY: PRIVATE_KEY_PEM,
-  GF_API_KEY: API_KEY,
+  FB_PROJECT_ID: PROJECT_ID,
+  FB_CLIENT_EMAIL: 'svc@test-project.iam.gserviceaccount.com',
+  FB_PRIVATE_KEY_ID: 'kid-1',
+  FB_PRIVATE_KEY: PRIVATE_KEY_PEM,
+  FB_API_KEY: API_KEY,
 };
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('public exports', () => {
   it('exposes the documented API', () => {
-    expect(typeof createGF).toBe('function');
+    expect(typeof createFirebaseEdge).toBe('function');
     expect(typeof configFromEnv).toBe('function');
     expect(typeof generateDocId).toBe('function');
     expect(typeof resendEmailSender).toBe('function');
@@ -45,9 +45,9 @@ describe('public exports', () => {
   });
 
   it('exposes auth, firestore and getAccessToken on the client', () => {
-    const gf = createGF(config({ fetchFn: createMockFetch().fetchFn }) as any);
-    expect(Object.keys(gf).sort()).toEqual(['auth', 'firestore', 'getAccessToken']);
-    expect(Object.keys(gf.auth).sort()).toEqual([
+    const fb = createFirebaseEdge(config({ fetchFn: createMockFetch().fetchFn }) as any);
+    expect(Object.keys(fb).sort()).toEqual(['auth', 'firestore', 'getAccessToken']);
+    expect(Object.keys(fb.auth).sort()).toEqual([
       'confirmPasswordReset',
       'createUser',
       'deleteUserPermanent',
@@ -59,7 +59,7 @@ describe('public exports', () => {
       'verifyIdToken',
       'verifyPasswordResetCode',
     ]);
-    expect(Object.keys(gf.firestore).sort()).toEqual([
+    expect(Object.keys(fb.firestore).sort()).toEqual([
       'delete',
       'get',
       'list',
@@ -69,15 +69,15 @@ describe('public exports', () => {
   });
 });
 
-describe('createGF', () => {
+describe('createFirebaseEdge', () => {
   it('lists every missing config value', () => {
-    expect(() => createGF({} as any)).toThrow(
-      'createGF: missing config values: projectId, clientEmail, privateKey, privateKeyId, apiKey'
+    expect(() => createFirebaseEdge({} as any)).toThrow(
+      'createFirebaseEdge: missing config values: projectId, clientEmail, privateKey, privateKeyId, apiKey'
     );
   });
 
   it('lists only the ones that are missing', () => {
-    expect(() => createGF(config({ apiKey: '', privateKeyId: undefined }) as any)).toThrow(
+    expect(() => createFirebaseEdge(config({ apiKey: '', privateKeyId: undefined }) as any)).toThrow(
       /missing config values: privateKeyId, apiKey$/
     );
   });
@@ -85,9 +85,9 @@ describe('createGF', () => {
   it('accepts a private key with escaped newlines and wrapping quotes', async () => {
     const mangled = `"${PRIVATE_KEY_PEM.replace(/\n/g, '\\n')}"`;
     const { fetchFn, calls } = createMockFetch();
-    const gf = createGF(config({ privateKey: mangled, fetchFn }) as any);
+    const fb = createFirebaseEdge(config({ privateKey: mangled, fetchFn }) as any);
 
-    await expect(gf.getAccessToken('scope')).resolves.toBe('test-token-1');
+    await expect(fb.getAccessToken('scope')).resolves.toBe('test-token-1');
     expect(calls[0].url).toBe(TOKEN_URL);
   });
 
@@ -95,19 +95,19 @@ describe('createGF', () => {
     const { fetchFn, calls } = createMockFetch();
     vi.stubGlobal('fetch', fetchFn);
 
-    const gf = createGF(config() as any);
-    await gf.getAccessToken('scope');
+    const fb = createFirebaseEdge(config() as any);
+    await fb.getAccessToken('scope');
     expect(calls).toHaveLength(1);
   });
 
   it('keeps clients isolated from each other', async () => {
     const a = createMockFetch();
     const b = createMockFetch();
-    const gfA = createGF(config({ fetchFn: a.fetchFn }) as any);
-    const gfB = createGF(config({ fetchFn: b.fetchFn }) as any);
+    const fbA = createFirebaseEdge(config({ fetchFn: a.fetchFn }) as any);
+    const fbB = createFirebaseEdge(config({ fetchFn: b.fetchFn }) as any);
 
-    await gfA.getAccessToken('s');
-    await gfB.getAccessToken('s');
+    await fbA.getAccessToken('s');
+    await fbB.getAccessToken('s');
     expect(a.calls).toHaveLength(1);
     expect(b.calls).toHaveLength(1);
   });
@@ -122,9 +122,9 @@ describe('createGF', () => {
         [`PATCH ${FS_DOCS}/${expected}/u1`, () => ({})],
       ])
     );
-    const gf = createGF(config({ fetchFn, usersCollection }) as any);
+    const fb = createFirebaseEdge(config({ fetchFn, usersCollection }) as any);
 
-    await gf.auth.createUser({ email: 'a@b.co', password: 'secret1', displayName: 'A' });
+    await fb.auth.createUser({ email: 'a@b.co', password: 'secret1', displayName: 'A' });
     expect(callsTo(calls, 'PATCH', `${FS_DOCS}/${expected}/u1`)).toHaveLength(1);
   });
 
@@ -135,12 +135,12 @@ describe('createGF', () => {
         [`PATCH ${FS_DOCS}/c/d`, () => ({})],
       ])
     );
-    const gf = createGF(config({ fetchFn }) as any);
+    const fb = createFirebaseEdge(config({ fetchFn }) as any);
 
-    await gf.auth.setCustomUserClaims('u1', { a: 1 });
-    await gf.auth.setCustomUserClaims('u1', { a: 2 });
-    await gf.firestore.set('c', 'd', { x: 1 });
-    await gf.firestore.set('c', 'd', { x: 2 });
+    await fb.auth.setCustomUserClaims('u1', { a: 1 });
+    await fb.auth.setCustomUserClaims('u1', { a: 2 });
+    await fb.firestore.set('c', 'd', { x: 1 });
+    await fb.firestore.set('c', 'd', { x: 2 });
 
     // identity scope + datastore scope = 2 token requests total
     expect(callsTo(calls, 'POST', TOKEN_URL)).toHaveLength(2);
@@ -155,9 +155,9 @@ describe('createGF', () => {
         [`PATCH ${FS_DOCS}/c/d`, () => ({})],
       ])
     );
-    const gf = createGF(config({ fetchFn }) as any);
-    await gf.auth.setCustomUserClaims('u1', {});
-    await gf.firestore.set('c', 'd', { x: 1 });
+    const fb = createFirebaseEdge(config({ fetchFn }) as any);
+    await fb.auth.setCustomUserClaims('u1', {});
+    await fb.firestore.set('c', 'd', { x: 1 });
 
     const scopes = callsTo(calls, 'POST', TOKEN_URL).map((c) => {
       const jwt = new URLSearchParams(c.body).get('assertion')!;
@@ -178,9 +178,9 @@ describe('createGF', () => {
         [`POST ${FS_DOCS}:commit`, () => ({})],
       ])
     );
-    const gf = createGF(config({ fetchFn, emailSender: sender }) as any);
+    const fb = createFirebaseEdge(config({ fetchFn, emailSender: sender }) as any);
 
-    await expect(gf.auth.resetUserPassword('u1', 'password1')).resolves.toEqual({ uid: 'u1', emailSent: true });
+    await expect(fb.auth.resetUserPassword('u1', 'password1')).resolves.toEqual({ uid: 'u1', emailSent: true });
     expect(sender).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.co' }));
   });
 
@@ -188,16 +188,16 @@ describe('createGF', () => {
     const { fetchFn, calls } = createMockFetch(
       routes([[`POST ${IDT_PUBLIC}/accounts:lookup`, () => ({ users: [{ localId: 'u9', email: 'z@z.co' }] })]])
     );
-    const gf = createGF(config({ fetchFn }) as any);
+    const fb = createFirebaseEdge(config({ fetchFn }) as any);
 
-    await expect(gf.auth.verifyIdToken('tok')).resolves.toMatchObject({ uid: 'u9' });
+    await expect(fb.auth.verifyIdToken('tok')).resolves.toMatchObject({ uid: 'u9' });
     expect(callsTo(calls, 'POST', TOKEN_URL)).toHaveLength(0); // no service-account token needed
     expect(calls[0].url).toBe(`${IDT_PUBLIC}/accounts:lookup?key=${API_KEY}`);
   });
 });
 
 describe('configFromEnv', () => {
-  it('maps the GF_* environment variables', () => {
+  it('maps the FB_* environment variables', () => {
     expect(configFromEnv(ENV)).toMatchObject({
       projectId: PROJECT_ID,
       clientEmail: 'svc@test-project.iam.gserviceaccount.com',
@@ -225,14 +225,14 @@ describe('configFromEnv', () => {
     expect(configFromEnv({ ...ENV, GF_RESEND_EMAIL_FROM: 'a@b.co' }).emailSender).toBeUndefined();
   });
 
-  it('builds a working Resend sender from GF_RESEND_* variables', async () => {
+  it('builds a working Resend sender from FB_RESEND_* variables', async () => {
     const { fetchFn, calls } = createMockFetch(() => ({ id: 'email_1' }));
     vi.stubGlobal('fetch', fetchFn);
 
     const { emailSender } = configFromEnv({
       ...ENV,
-      GF_RESEND_API_KEY: 're_secret',
-      GF_RESEND_EMAIL_FROM: 'Acme <no-reply@acme.dev>',
+      FB_RESEND_API_KEY: 're_secret',
+      FB_RESEND_EMAIL_FROM: 'Acme <no-reply@acme.dev>',
     });
     expect(emailSender).toBeTypeOf('function');
 
@@ -254,8 +254,8 @@ describe('configFromEnv', () => {
     expect(cfg.emailSender).toBe(sender);
   });
 
-  it('produces a config createGF accepts', () => {
-    expect(() => createGF(configFromEnv(ENV))).not.toThrow();
+  it('produces a config createFirebaseEdge accepts', () => {
+    expect(() => createFirebaseEdge(configFromEnv(ENV))).not.toThrow();
   });
 });
 
