@@ -5,10 +5,20 @@ const IDENTITY_TOOLKIT_BASE = 'https://identitytoolkit.googleapis.com/v1';
 export const SCOPE_IDENTITY = 'https://www.googleapis.com/auth/identitytoolkit';
 
 /**
- * 'admin'  -> project-scoped endpoint, authenticated with the service account
- * 'apiKey' -> public endpoint, authenticated with the web API key
+ * Creates an identity client for interacting with the Firebase Identity Toolkit API.
+ * @param ctx - The application context containing configuration, credentials, and fetch implementation.
  */
 export function createIdentityClient(ctx: Context) {
+
+  /**
+   * Makes an authenticated request to the Google Identity Toolkit API.
+   * @template T - The expected response data type.
+   * @param path - The API endpoint path.
+   * @param body - The payload body to send with the request.
+   * @param auth - The authentication mode ('admin' for service account, 'apiKey' for web API key).
+   * @returns The parsed response data.
+   * @throws {FirebaseError} If the request fails or returns an error.
+   */
   async function call<T = any>(
     path: string,
     body: Record<string, any>,
@@ -35,6 +45,11 @@ export function createIdentityClient(ctx: Context) {
     return data as T;
   }
 
+  /**
+   * Looks up a user account by their local ID or email address.
+   * @param query - An object specifying user local IDs or email addresses to search for.
+   * @returns The user record object if found, or null otherwise.
+   */
   async function lookupUser(query: { localId?: string[]; email?: string[] }) {
     const data = await call<any>('/accounts:lookup', query, 'admin');
     return (data.users?.[0] as any) ?? null;

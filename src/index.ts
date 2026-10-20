@@ -10,8 +10,12 @@ export { resendEmailSender } from './email';
 export type { FirebaseConfig, EmailSender, EmailMessage } from './types';
 
 /**
- * Create a client. Construct once per isolate/process and reuse it:
+ * Creates a client. Construct once per isolate/process and reuse it:
  * token and key caches live inside the client.
+ * 
+ * @param config - The Firebase configuration object containing credentials and options.
+ * @returns An object containing initialized auth, firestore, and token provider utilities.
+ * @throws {Error} If any required configuration values are missing.
  */
 export function createGF(config: FirebaseConfig) {
   const required = ['projectId', 'clientEmail', 'privateKey', 'privateKeyId', 'apiKey'] as const;
@@ -56,6 +60,10 @@ export type FirebaseClient = ReturnType<typeof createGF>;
  * `process.env`, `Deno.env.toObject()`, etc.
  * Reads GF_PROJECT_ID, GF_CLIENT_EMAIL, GF_PRIVATE_KEY_ID,
  * GF_PRIVATE_KEY, GF_API_KEY and optionally GF_RESEND_API_KEY + GF_RESEND_EMAIL_FROM.
+ * 
+ * @param env - The environment variables record mapping string keys to values.
+ * @param overrides - Optional configuration properties to override values from the environment.
+ * @returns A fully constructed FirebaseConfig object.
  */
 export function configFromEnv(
   env: Record<string, string | undefined>,

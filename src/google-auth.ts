@@ -79,7 +79,13 @@ export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
     return data.access_token;
   }
 
-  return function getAccessToken(scope: string): Promise<string> {
+  /**
+   * Retrieves a valid OAuth 2.0 access token for the provided scope.
+   * Reuses cached tokens and de-dupes in-flight requests by scope.
+   * @param scope - The OAuth scope requested from Google.
+   * @returns A promise that resolves to the access token.
+   */
+  function getAccessToken(scope: string): Promise<string> {
     const cached = cache.get(scope);
     if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.token);
 
@@ -89,5 +95,7 @@ export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
       inflight.set(scope, pending);
     }
     return pending;
-  };
+  }
+
+  return getAccessToken
 }
