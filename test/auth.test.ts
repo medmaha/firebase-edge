@@ -118,11 +118,11 @@ describe('createUser', () => {
     [`PATCH ${FS_DOCS}/users/u1`, () => ({})],
   ];
 
-  it('creates the Auth user and a matching Firestore profile', async () => {
+  it('creates the Auth user and a matching Firestore profile without a role field', async () => {
     const { auth, calls } = setup(happy());
 
-    await expect(auth.createUser({ ...base, role: 'admin' })).resolves.toEqual({ uid: 'u1' });
-    await expect(auth.createUser({ ...base, role: 'admin', disabled: true })).resolves.toEqual({ uid: 'u1' });
+    await expect(auth.createUser(base)).resolves.toEqual({ uid: 'u1' });
+    await expect(auth.createUser({ ...base, disabled: true })).resolves.toEqual({ uid: 'u1' });
 
     expect(find(calls, 'POST', `${IDT_ADMIN}/accounts`)!.body).toEqual({
       email: 'ada@example.com',
@@ -140,18 +140,18 @@ describe('createUser', () => {
       disabled: { booleanValue: false },
       disabledAt: { nullValue: null },
       passwordResetCount: { integerValue: '0' },
-      role: { stringValue: 'admin' },
       createdAt: NOW_FIELD,
       updatedAt: NOW_FIELD,
     });
     // merge write -> update mask present
-    expect(new URL(patch.url).searchParams.getAll('updateMask.fieldPaths')).toContain('role');
+    expect(patch.body.fields).not.toHaveProperty('role');
+    expect(new URL(patch.url).searchParams.getAll('updateMask.fieldPaths')).not.toContain('role');
   });
 
-  it('stores role as null when omitted', async () => {
+  it('does not add a role field when omitted', async () => {
     const { auth, calls } = setup(happy());
     await auth.createUser(base);
-    expect(callsTo(calls, 'PATCH', FS_DOCS)[0].body.fields.role).toEqual({ nullValue: null });
+    expect(callsTo(calls, 'PATCH', FS_DOCS)[0].body.fields).not.toHaveProperty('role');
   });
 
   it('includes a trimmed phone number, and omits blank ones', async () => {

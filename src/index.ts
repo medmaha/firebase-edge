@@ -5,6 +5,8 @@ import { resendEmailSender } from './email';
 import type { Context, FirebaseConfig } from './types';
 
 export { FirebaseError } from './errors';
+export type { AuthApi, CreateUserOptions } from './auth';
+export type { FirestoreApi, FirestoreListQuery } from './firestore';
 export { generateDocId } from './utils';
 export { resendEmailSender } from './email';
 export type { FirebaseConfig, EmailSender, EmailMessage } from './types';
