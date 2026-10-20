@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FirebaseError } from '../src/errors';
-import { createFirestore, fromFirestoreValue, toFirestoreValue } from '../src/firestore';
+import { createFirestore } from '../src/firestore';
+import { fromFirestoreValue, toFirestoreValue } from '../src/utils.firestore';
 import {
   DOC_NAME,
   FS_DOCS,
@@ -10,6 +11,7 @@ import {
   makeCtx,
   routes,
 } from './helpers';
+
 
 describe('toFirestoreValue', () => {
   it('maps primitives', () => {
@@ -304,16 +306,25 @@ describe('firestore.list', () => {
       ])
     );
 
-    await expect(createFirestore(ctx).list('users')).resolves.toEqual([
-      { id: 'u1', email: 'ada@example.com', age: 36 },
-      { id: 'u2', disabled: true },
-    ]);
+    await expect(createFirestore(ctx).list('users')).resolves.toEqual({
+      documents: [
+        { id: 'u1', email: 'ada@example.com', age: 36 },
+        { id: 'u2', disabled: true },
+      ],
+      nextPageToken: undefined,
+    });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(`${FS_DOCS}:runQuery`);
     expect(calls[0].body).toEqual({
       structureQuery: {
         limit: 100,
         from: [{ collectionId: 'users' }],
+        orderBy: [
+          {
+            direction: 'ASCENDING',
+            field: { fieldPath: '__name__' },
+          },
+        ],
       },
     });
   });
@@ -332,7 +343,10 @@ describe('firestore.list', () => {
         orderBy: 'createdAt',
         direction: 'DESCENDING',
       })
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({
+      "documents": [],
+      "nextPageToken": undefined,
+    });
     expect(calls[0].body).toEqual({
       structureQuery: {
         limit: 25,
@@ -348,6 +362,10 @@ describe('firestore.list', () => {
           {
             direction: 'DESCENDING',
             field: { fieldPath: 'createdAt' },
+          },
+          {
+            direction: 'DESCENDING',
+            field: { fieldPath: '__name__' },
           },
         ],
       },
@@ -388,7 +406,7 @@ describe('firestore.list', () => {
     const firestore = createFirestore(ctx);
     const query = { limit: 2, orderBy: 'createdAt', direction: 'DESCENDING' as const };
 
-    const firstPage = await firestore.listPage('orders', query);
+    const firstPage = await firestore.list('orders', query);
     expect(firstPage.documents).toEqual([
       { id: 'o1', createdAt: new Date('2026-01-01T00:00:00Z'), total: 10 },
       { id: 'o2', createdAt: new Date('2026-01-01T00:00:00Z'), total: 20 },
@@ -399,7 +417,7 @@ describe('firestore.list', () => {
       { direction: 'DESCENDING', field: { fieldPath: '__name__' } },
     ]);
 
-    const secondPage = await firestore.listPage('orders', {
+    const secondPage = await firestore.list('orders', {
       ...query,
       pageToken: firstPage.nextPageToken,
     });
@@ -421,12 +439,12 @@ describe('firestore.list', () => {
       { document: { name: DOC_NAME('users/u1'), fields: { email: { stringValue: 'a@b.co' } } } },
     ]);
     const firestore = createFirestore(ctx);
-    const firstPage = await firestore.listPage('users', { limit: 1 });
+    const firstPage = await firestore.list('users', { limit: 1 });
 
     expect(firstPage.nextPageToken).toBeTruthy();
     expect(fn.mock.calls[0][1]?.body).toContain('"fieldPath":"__name__"');
     await expect(
-      firestore.listPage('members', { limit: 1, pageToken: firstPage.nextPageToken })
+      firestore.list('members', { limit: 1, pageToken: firstPage.nextPageToken })
     ).rejects.toMatchObject({ code: 'INVALID_PAGE_TOKEN' });
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -434,7 +452,7 @@ describe('firestore.list', () => {
   it('rejects malformed page tokens', async () => {
     const { ctx, fn } = makeCtx();
     await expect(
-      createFirestore(ctx).listPage('users', { pageToken: 'not a token' })
+      createFirestore(ctx).list('users', { pageToken: 'not a token' })
     ).rejects.toMatchObject({ code: 'INVALID_PAGE_TOKEN' });
     expect(fn).not.toHaveBeenCalled();
   });

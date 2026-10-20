@@ -63,7 +63,6 @@ describe('public exports', () => {
       'delete',
       'get',
       'list',
-      'listPage',
       'set',
       'update',
     ]);
