@@ -82,10 +82,7 @@ export function createStorage(ctx: Context): StorageApi {
         assertObjectName(path);
         const { bytes, defaultType } = await toBytes(data);
         if (bytes.length > MAX_UPLOAD_SIZE) {
-            throw new FirebaseError(
-                'INVALID_ARGUMENT',
-                'Storage uploads are limited to 8 MiB;'
-            );
+            throw new FirebaseError('INVALID_ARGUMENT', 'Storage uploads are limited to 8 MiB;');
         }
 
         const contentType = options.contentType ?? defaultType;

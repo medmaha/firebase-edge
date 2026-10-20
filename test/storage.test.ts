@@ -107,7 +107,7 @@ describe('storage.upload', () => {
         await expect(createStorage(ctx).upload('big.bin', big)).rejects.toMatchObject({
             name: 'FirebaseError',
             code: 'INVALID_ARGUMENT',
-            message: "Storage uploads are limited to 8 MiB;"
+            message: 'Storage uploads are limited to 8 MiB;',
         });
     });
 
