@@ -44,9 +44,9 @@ describe('public exports', () => {
     expect(new FirebaseError('X')).toBeInstanceOf(Error);
   });
 
-  it('exposes auth, firestore and getAccessToken on the client', () => {
+  it('exposes auth, firestore, storage and getAccessToken on the client', () => {
     const fb = createFirebaseEdge(config({ fetchFn: createMockFetch().fetchFn }) as any);
-    expect(Object.keys(fb).sort()).toEqual(['auth', 'firestore', 'getAccessToken']);
+    expect(Object.keys(fb).sort()).toEqual(['auth', 'firestore', 'getAccessToken', 'storage']);
     expect(Object.keys(fb.auth).sort()).toEqual([
       'confirmPasswordReset',
       'createUser',
@@ -66,6 +66,28 @@ describe('public exports', () => {
       'set',
       'update',
     ]);
+    expect(Object.keys(fb.storage).sort()).toEqual([
+      'bucket',
+      'delete',
+      'download',
+      'downloadStream',
+      'getDownloadUrl',
+      'getMetadata',
+      'list',
+      'signedUrl',
+      'updateMetadata',
+      'upload',
+    ]);
+  });
+
+  it('defaults the storage bucket and honours storageBucket', () => {
+    const fetchFn = createMockFetch().fetchFn;
+    expect(createFirebaseEdge(config({ fetchFn }) as any).storage.bucket).toBe(
+      `${PROJECT_ID}.firebasestorage.app`
+    );
+    expect(
+      createFirebaseEdge(config({ fetchFn, storageBucket: 'custom.appspot.com' }) as any).storage.bucket
+    ).toBe('custom.appspot.com');
   });
 });
 
@@ -205,6 +227,11 @@ describe('configFromEnv', () => {
       privateKey: PRIVATE_KEY_PEM,
       apiKey: API_KEY,
     });
+  });
+
+  it('reads FB_STORAGE_BUCKET when set', () => {
+    expect(configFromEnv(ENV).storageBucket).toBeUndefined();
+    expect(configFromEnv({ ...ENV, FB_STORAGE_BUCKET: 'b.appspot.com' }).storageBucket).toBe('b.appspot.com');
   });
 
   it('does not read the old unprefixed variable names', () => {
