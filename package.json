@@ -1,6 +1,6 @@
 {
-  "name": "@inoblend/google-firebase-apis",
-  "version": "0.1.5",
+  "name": "firebase-edge",
+  "version": "0.1.0",
   "description": "Zero-dependency Firebase Auth + Firestore admin utilities over REST. Runs on Cloudflare Workers, Vercel Edge, Deno, Bun and Node 20+.",
   "type": "module",
   "main": "./dist/index.cjs",
