@@ -31,7 +31,7 @@ export interface AuthApi {
     verifyIdToken(
         idToken: string,
         options?: VerifyIdTokenOptions
-    ): Promise<{ uid: string;[key: string]: any }>;
+    ): Promise<{ uid: string; [key: string]: any }>;
 
     /**
      * Updates an existing user's profile and credentials across both Auth and Firestore.
