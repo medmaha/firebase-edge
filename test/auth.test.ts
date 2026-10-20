@@ -304,7 +304,7 @@ describe('updateUser', () => {
         const { auth, calls } = setup(table);
         const payload = {
             email: 'new@example.com',
-            displayName: 'Ada Lovelace',
+            displayName: 'John Doe',
             password: 'new-password',
             disabled: false,
             role: 'admin',
@@ -319,20 +319,20 @@ describe('updateUser', () => {
         ]);
         expect(commitWrites(calls)[0].update.fields).toEqual({
             email: { stringValue: 'new@example.com' },
-            displayName: { stringValue: 'Ada Lovelace' },
+            displayName: { stringValue: 'John Doe' },
             disabled: { booleanValue: false },
             role: { stringValue: 'admin' },
         });
         expect(find(calls, 'POST', `${IDT_ADMIN}/accounts:update`)!.body).toEqual({
             localId: 'u1',
             email: 'new@example.com',
-            displayName: 'Ada Lovelace',
+            displayName: 'John Doe',
             password: 'new-password',
             disableUser: false,
         });
         expect(payload).toEqual({
             email: 'new@example.com',
-            displayName: 'Ada Lovelace',
+            displayName: 'John Doe',
             password: 'new-password',
             disabled: false,
             role: 'admin',
@@ -620,12 +620,12 @@ describe('resetUserPassword', () => {
     });
 
     it('treats a void return from the sender as sent', async () => {
-        const { auth } = setup(table(user()), async () => {});
+        const { auth } = setup(table(user()), async () => { });
         expect((await auth.resetUserPassword('u1', 'password1')).emailSent).toBe(true);
     });
 
     it('does not fail the reset when the sender throws', async () => {
-        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
         const { auth } = setup(table(user()), async () => {
             throw new Error('smtp down');
         });
@@ -723,10 +723,10 @@ describe('verifyPasswordResetCode', () => {
         reset: Record<string, unknown> | Response,
         existing: Record<string, unknown> | null = user()
     ): Table => [
-        [PUBLIC_RESET, () => reset],
-        [ADMIN_LOOKUP, () => ({ users: existing ? [existing] : [] })],
-        [COMMIT, () => ({})],
-    ];
+            [PUBLIC_RESET, () => reset],
+            [ADMIN_LOOKUP, () => ({ users: existing ? [existing] : [] })],
+            [COMMIT, () => ({})],
+        ];
 
     it('returns the email and records the verification', async () => {
         const { auth, calls } = setup(
