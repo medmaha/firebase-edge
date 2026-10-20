@@ -1,6 +1,6 @@
 {
     "name": "firebase-edge",
-    "version": "0.1.1",
+    "version": "0.1.11",
     "description": "Zero-dependency Firebase Auth + Firestore admin utilities over REST. Runs on Cloudflare Workers, Vercel Edge, Deno, Bun and Node 20+.",
     "repository": {
         "type": "git",
