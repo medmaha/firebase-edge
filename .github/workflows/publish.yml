@@ -1,0 +1,29 @@
+name: Publish to npm
+
+on:
+    push:
+        tags:
+            - 'v*'
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    publish:
+        name: Publish package
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 10.24.0
+            - run: pnpm install --frozen-lockfile
+            - name: Verify tag matches package version
+              run: |
+                  node -e 'const { version } = require("./package.json"); if (process.argv[1] !== "v" + version) { console.error(`Tag ${process.argv[1]} does not match package version ${version}`); process.exit(1); }' "$GITHUB_REF_NAME"
+            - name: Publish with npm provenance
+              run: npm publish --provenance --access public
