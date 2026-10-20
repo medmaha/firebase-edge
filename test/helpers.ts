@@ -7,6 +7,8 @@ import type { Context } from '../src/types';
 export const PROJECT_ID = 'test-project';
 export const DATABASE_NAME = 'test-db';
 export const API_KEY = 'test-api-key';
+export const BUCKET = 'test-project.firebasestorage.app';
+export const CLIENT_EMAIL = 'svc@test-project.iam.gserviceaccount.com';
 export const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const IDT_PUBLIC = 'https://identitytoolkit.googleapis.com/v1';
 export const IDT_ADMIN = `${IDT_PUBLIC}/projects/${PROJECT_ID}`;
@@ -104,8 +106,11 @@ export function makeCtx(handler: Handler = () => undefined, overrides: Partial<C
     apiKey: API_KEY,
     databaseName: DATABASE_NAME,
     usersCollection: 'users',
+    storageBucket: BUCKET,
+    clientEmail: CLIENT_EMAIL,
     fetchFn: mock.fetchFn,
     getAccessToken: async () => 'test-token',
+    sign: async (data) => new TextEncoder().encode(`sig:${data.length}`).buffer,
     ...overrides,
   };
   return { ctx, ...mock };
