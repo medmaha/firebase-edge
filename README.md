@@ -33,7 +33,7 @@ const firebase = createFirebaseEdge(configFromEnv(process.env));
 const { uid } = await firebase.auth.createUser({
     email: 'ada@example.com',
     password: 'correct-horse-battery',
-    displayName: 'Ada Lovelace',
+    displayName: 'John Doe',
     claims: { role: 'admin' },
 });
 
@@ -265,6 +265,6 @@ pnpm run test:runtime
 
 ## Scope and limitations
 
-This is a small Auth, Firestore and Cloud Storage REST client, not a complete replacement for `firebase-admin`. It does not provide Cloud Messaging, session cookies, or multi-tenancy support. Storage uploads are buffered in memory (no streaming uploads), and object copy/compose are not included. `firestore.list()` runs a single query and returns at most 500 documents per page; use its page token to fetch more.
+This is a small Auth, Firestore and Cloud Storage REST client, not a complete replacement for `firebase-admin` sdk. It does not provide Cloud Messaging, session cookies, or multi-tenancy support. Storage uploads are buffered in memory (no streaming uploads), and object copy/compose are not included. `firestore.list()` runs a single query and returns at most 500 documents per page; use its page token to fetch more.
 
 Because the service-account key grants administrative access, keep it in your deployment platform's secret manager and restrict access to it. Never ship it to browsers or commit it to the repository.
