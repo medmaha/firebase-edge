@@ -2,45 +2,76 @@ name: CI
 
 on:
     push:
+        branches: [main]
     pull_request:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    PNPM_VERSION: '10.24.0'
 
 jobs:
     node:
         name: Node.js ${{ matrix.node-version }}
         runs-on: ubuntu-latest
+        timeout-minutes: 10
         strategy:
             fail-fast: false
             matrix:
                 node-version: ['20', '22', '24']
         steps:
             - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: ${{ env.PNPM_VERSION }}
             - uses: actions/setup-node@v4
               with:
                   node-version: ${{ matrix.node-version }}
-            - uses: pnpm/action-setup@v4
-              with:
-                  version: 10.24.0
+                  cache: pnpm
             - run: pnpm install --frozen-lockfile
-            - run: pnpm test
             - run: pnpm run typecheck
+            - run: pnpm test
             - run: pnpm run build
             - run: node scripts/runtime-smoke.mjs
+
+    workers:
+        name: Cloudflare Workers (workerd)
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: ${{ env.PNPM_VERSION }}
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+                  cache: pnpm
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm run test:workers
 
     portable-runtimes:
         name: ${{ matrix.runtime }} smoke test
         runs-on: ubuntu-latest
+        timeout-minutes: 10
         strategy:
             fail-fast: false
             matrix:
                 runtime: [deno, bun]
         steps:
             - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: ${{ env.PNPM_VERSION }}
             - uses: actions/setup-node@v4
               with:
                   node-version: '24'
-            - uses: pnpm/action-setup@v4
-              with:
-                  version: 10.24.0
+                  cache: pnpm
             - run: pnpm install --frozen-lockfile
             - run: pnpm run build
             - uses: denoland/setup-deno@v2
@@ -55,3 +86,18 @@ jobs:
             - name: Smoke test on Bun
               if: matrix.runtime == 'bun'
               run: bun run scripts/runtime-smoke.mjs
+
+    # Single required check for branch protection, so the matrix can change
+    # without editing repository settings.
+    ci-ok:
+        name: CI passed
+        if: always()
+        needs: [node, workers, portable-runtimes]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Fail if any job failed or was cancelled
+              run: |
+                  if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+                    echo "One or more jobs failed"
+                    exit 1
+                  fi

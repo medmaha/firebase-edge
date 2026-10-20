@@ -255,12 +255,14 @@ The package requires Node.js 20 or later and is built on standard `fetch` and We
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Node.js                            | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24.                                                |
 | Deno and Bun                       | CI has portable-runtime smoke-test jobs.                                                                               |
-| Cloudflare Workers and Vercel Edge | Designed for these Web API-based runtimes; the current CI workflow does not run a Workers or Vercel Edge isolate test. |
+| Cloudflare Workers (workerd)       | Tested in CI using Miniflare and the shared runtime smoke test.                                                       |
+| Vercel Edge                        | Designed for this Web API-based runtime; CI does not currently run a Vercel Edge isolate test.                       |
 
-Run the Node.js smoke test locally with:
+Run the Node.js and Cloudflare Workers smoke tests locally with:
 
 ```sh
 pnpm run test:runtime
+pnpm run test:workers
 ```
 
 ## Scope and limitations
