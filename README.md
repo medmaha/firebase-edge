@@ -26,19 +26,15 @@ FB_STORAGE_BUCKET=your-project.firebasestorage.app   # optional
 Then create and reuse a client:
 
 ```ts
-import {
-  configFromEnv,
-  createFirebaseEdge,
-  generateDocId,
-} from 'firebase-edge';
+import { configFromEnv, createFirebaseEdge, generateDocId } from 'firebase-edge';
 
 const firebase = createFirebaseEdge(configFromEnv(process.env));
 
 const { uid } = await firebase.auth.createUser({
-  email: 'ada@example.com',
-  password: 'correct-horse-battery',
-  displayName: 'Ada Lovelace',
-  claims: { role: 'admin' },
+    email: 'ada@example.com',
+    password: 'correct-horse-battery',
+    displayName: 'Ada Lovelace',
+    claims: { role: 'admin' },
 });
 
 const tokenInfo = await firebase.auth.verifyIdToken(idToken);
@@ -55,27 +51,27 @@ Keep the client in the module scope so it is reused within an isolate. Store cre
 import { createFirebaseEdge, type FirebaseClient } from 'firebase-edge';
 
 interface Env {
-  FB_PROJECT_ID: string;
-  FB_CLIENT_EMAIL: string;
-  FB_PRIVATE_KEY_ID: string;
-  FB_PRIVATE_KEY: string;
-  FB_API_KEY: string;
+    FB_PROJECT_ID: string;
+    FB_CLIENT_EMAIL: string;
+    FB_PRIVATE_KEY_ID: string;
+    FB_PRIVATE_KEY: string;
+    FB_API_KEY: string;
 }
 
 let firebase: FirebaseClient | undefined;
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    firebase ??= createFirebaseEdge({
-      projectId: env.FB_PROJECT_ID,
-      clientEmail: env.FB_CLIENT_EMAIL,
-      privateKeyId: env.FB_PRIVATE_KEY_ID,
-      privateKey: env.FB_PRIVATE_KEY,
-      apiKey: env.FB_API_KEY,
-    });
+    async fetch(request: Request, env: Env): Promise<Response> {
+        firebase ??= createFirebaseEdge({
+            projectId: env.FB_PROJECT_ID,
+            clientEmail: env.FB_CLIENT_EMAIL,
+            privateKeyId: env.FB_PRIVATE_KEY_ID,
+            privateKey: env.FB_PRIVATE_KEY,
+            apiKey: env.FB_API_KEY,
+        });
 
-    return new Response('Firebase client is ready');
-  },
+        return new Response('Firebase client is ready');
+    },
 };
 ```
 
@@ -83,25 +79,25 @@ export default {
 
 `createFirebaseEdge()` requires the following values:
 
-| Option | Description |
-| --- | --- |
-| `projectId` | Firebase project ID. |
-| `clientEmail` | Service-account email address. |
-| `privateKeyId` | Service-account private key ID. |
-| `privateKey` | Service-account PEM private key. Escaped `\n` sequences and wrapping quotes are handled. |
-| `apiKey` | Firebase Web API key, used for public Identity Toolkit endpoints. |
+| Option         | Description                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `projectId`    | Firebase project ID.                                                                     |
+| `clientEmail`  | Service-account email address.                                                           |
+| `privateKeyId` | Service-account private key ID.                                                          |
+| `privateKey`   | Service-account PEM private key. Escaped `\n` sequences and wrapping quotes are handled. |
+| `apiKey`       | Firebase Web API key, used for public Identity Toolkit endpoints.                        |
 
 Optional `FirebaseConfig` values:
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `databaseName` | `default` | Firestore database name. |
-| `usersCollection` | `users` | Collection used to mirror Auth user profile data. |
-| `allowFirestoreAuthCollection` | `true` | Set to `false` to disable automatic Auth profile writes to Firestore. |
-| `minAuthPasswordLength` | `6` | Minimum password length checked by password operations. |
-| `storageBucket` | `<projectId>.firebasestorage.app` | Cloud Storage bucket used by `storage`. Projects created before Oct 2024 usually use `<projectId>.appspot.com`. |
-| `emailSender` | — | Async callback used to notify users after an admin password reset. |
-| `fetchFn` | global `fetch` | Optional custom fetch implementation, useful for tests or proxies. |
+| Option                         | Default                           | Description                                                                                                     |
+| ------------------------------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `databaseName`                 | `default`                         | Firestore database name.                                                                                        |
+| `usersCollection`              | `users`                           | Collection used to mirror Auth user profile data.                                                               |
+| `allowFirestoreAuthCollection` | `true`                            | Set to `false` to disable automatic Auth profile writes to Firestore.                                           |
+| `minAuthPasswordLength`        | `6`                               | Minimum password length checked by password operations.                                                         |
+| `storageBucket`                | `<projectId>.firebasestorage.app` | Cloud Storage bucket used by `storage`. Projects created before Oct 2024 usually use `<projectId>.appspot.com`. |
+| `emailSender`                  | —                                 | Async callback used to notify users after an admin password reset.                                              |
+| `fetchFn`                      | global `fetch`                    | Optional custom fetch implementation, useful for tests or proxies.                                              |
 
 `configFromEnv(env, overrides?)` reads `FB_PROJECT_ID`, `FB_CLIENT_EMAIL`, `FB_PRIVATE_KEY_ID`, `FB_PRIVATE_KEY`, and `FB_API_KEY`, plus the optional `FB_STORAGE_BUCKET`. It also configures the built-in Resend sender when both `FB_RESEND_API_KEY` and `FB_RESEND_EMAIL_FROM` are set. Pass optional client settings in `overrides`.
 
@@ -111,18 +107,18 @@ To use Resend directly, call `resendEmailSender({ apiKey, from })` and pass the 
 
 The `auth` client provides:
 
-| Method | Purpose |
-| --- | --- |
-| `createUser(options)` | Creates an Auth user and, by default, a matching Firestore profile. Requires a password and either an email or phone number. |
-| `verifyIdToken(token)` | Looks up and verifies the ID token with Firebase, returning the UID, email, verification state, and custom claims. |
-| `setCustomUserClaims(uid, claims)` | Sets the user's custom claims in Auth. This replaces the custom-claims object. |
-| `updateUser(uid, fields)` | Updates supported Auth fields and the Firestore profile. Passwords are not copied into Firestore. |
-| `disableUser(uid, disabled?)` | Sets the disabled state, or toggles it when `disabled` is omitted. |
-| `deleteUserPermanent(uid)` | Permanently deletes the Auth user and its mirrored Firestore profile. |
-| `resetUserPassword(uid, newPassword)` | Changes the password, revokes existing sessions, and attempts to notify the user. Returns `{ uid, emailSent }`. |
-| `requestPasswordReset(email, continueUrl?)` | Requests a Firebase password-reset email without revealing whether the address is registered. |
-| `verifyPasswordResetCode(oobCode)` | Checks a password-reset code and returns the associated email. |
-| `confirmPasswordReset(oobCode, newPassword)` | Completes a password reset with the code and new password. |
+| Method                                       | Purpose                                                                                                                      |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `createUser(options)`                        | Creates an Auth user and, by default, a matching Firestore profile. Requires a password and either an email or phone number. |
+| `verifyIdToken(token)`                       | Looks up and verifies the ID token with Firebase, returning the UID, email, verification state, and custom claims.           |
+| `setCustomUserClaims(uid, claims)`           | Sets the user's custom claims in Auth. This replaces the custom-claims object.                                               |
+| `updateUser(uid, fields)`                    | Updates supported Auth fields and the Firestore profile. Passwords are not copied into Firestore.                            |
+| `disableUser(uid, disabled?)`                | Sets the disabled state, or toggles it when `disabled` is omitted.                                                           |
+| `deleteUserPermanent(uid)`                   | Permanently deletes the Auth user and its mirrored Firestore profile.                                                        |
+| `resetUserPassword(uid, newPassword)`        | Changes the password, revokes existing sessions, and attempts to notify the user. Returns `{ uid, emailSent }`.              |
+| `requestPasswordReset(email, continueUrl?)`  | Requests a Firebase password-reset email without revealing whether the address is registered.                                |
+| `verifyPasswordResetCode(oobCode)`           | Checks a password-reset code and returns the associated email.                                                               |
+| `confirmPasswordReset(oobCode, newPassword)` | Completes a password reset with the code and new password.                                                                   |
 
 Pass custom claims when creating a user or set them later:
 
@@ -140,24 +136,16 @@ The `firestore` client provides `set`, `update`, `get`, `list`, and `delete`.
 
 ```ts
 await firebase.firestore.set('orders', 'order-123', { status: 'pending' });
-await firebase.firestore.set(
-  'orders',
-  'order-123',
-  { status: 'paid' },
-  { merge: true },
-);
+await firebase.firestore.set('orders', 'order-123', { status: 'paid' }, { merge: true });
 
 await firebase.firestore.update(
-  'orders',
-  'order-123',
-  { status: 'paid' },
-  { increments: { attempts: 1 } },
+    'orders',
+    'order-123',
+    { status: 'paid' },
+    { increments: { attempts: 1 } }
 );
 
-const order = await firebase.firestore.get<{ status: string }>(
-  'orders',
-  'order-123',
-);
+const order = await firebase.firestore.get<{ status: string }>('orders', 'order-123');
 ```
 
 `set()` replaces the document unless `{ merge: true }` is provided. `update()` writes only the supplied fields and can atomically increment numeric fields. `get()` returns decoded document data or `null` if the document does not exist. Deleting a missing document is a no-op.
@@ -168,24 +156,24 @@ const order = await firebase.firestore.get<{ status: string }>(
 
 ```ts
 const firstPage = await firebase.firestore.list('orders', {
-  field: 'status',
-  op: 'EQUAL',
-  value: 'paid',
-  orderBy: 'createdAt',
-  direction: 'DESCENDING',
-  limit: 100,
-});
-
-if (firstPage.nextPageToken) {
-  const nextPage = await firebase.firestore.list('orders', {
     field: 'status',
     op: 'EQUAL',
     value: 'paid',
     orderBy: 'createdAt',
     direction: 'DESCENDING',
     limit: 100,
-    pageToken: firstPage.nextPageToken,
-  });
+});
+
+if (firstPage.nextPageToken) {
+    const nextPage = await firebase.firestore.list('orders', {
+        field: 'status',
+        op: 'EQUAL',
+        value: 'paid',
+        orderBy: 'createdAt',
+        direction: 'DESCENDING',
+        limit: 100,
+        pageToken: firstPage.nextPageToken,
+    });
 }
 ```
 
@@ -201,26 +189,26 @@ The timestamps in these profile fields are epoch milliseconds. Custom claims are
 
 `firebase.storage` talks to the Cloud Storage JSON API for your Firebase bucket using the service account. **This is administrative access: Firebase Security Rules do not apply**, so enforce your own authorization before calling it with user-supplied paths. The service account needs a role such as Storage Object Admin on the bucket.
 
-| Method | Purpose |
-| --- | --- |
-| `upload(path, data, options?)` | Uploads a `string`, `Uint8Array`/`ArrayBuffer` or `Blob` and returns the object's metadata. Uses a multipart request, or a resumable session above 8 MiB. |
-| `download(path)` | Returns the bytes, or `null` if the object does not exist. |
-| `downloadStream(path)` | Same, but as a `ReadableStream`, e.g. to proxy a file from a Worker. |
-| `getMetadata(path)` | Returns the object's metadata, or `null` if it does not exist. |
-| `updateMetadata(path, options)` | Updates content type, cache control, disposition or custom metadata (a `null` value removes a key). |
-| `list({ prefix, delimiter, limit, pageToken })` | Returns `{ objects, prefixes, nextPageToken }`. `limit` defaults to 100 (max 1000). |
-| `delete(path)` | Deletes the object. Deleting a missing object is a no-op. |
-| `getDownloadUrl(path)` | Returns a Firebase-style tokenized URL (like `getDownloadURL()` in the client SDK), creating a token if needed. |
-| `signedUrl(path, options?)` | Returns a V4 signed URL for `GET`, `PUT`, `DELETE` or `HEAD`. Signed locally, no network request. |
+| Method                                          | Purpose                                                                                                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upload(path, data, options?)`                  | Uploads a `string`, `Uint8Array`/`ArrayBuffer` or `Blob` and returns the object's metadata. Uses a multipart request, or a resumable session above 8 MiB. |
+| `download(path)`                                | Returns the bytes, or `null` if the object does not exist.                                                                                                |
+| `downloadStream(path)`                          | Same, but as a `ReadableStream`, e.g. to proxy a file from a Worker.                                                                                      |
+| `getMetadata(path)`                             | Returns the object's metadata, or `null` if it does not exist.                                                                                            |
+| `updateMetadata(path, options)`                 | Updates content type, cache control, disposition or custom metadata (a `null` value removes a key).                                                       |
+| `list({ prefix, delimiter, limit, pageToken })` | Returns `{ objects, prefixes, nextPageToken }`. `limit` defaults to 100 (max 1000).                                                                       |
+| `delete(path)`                                  | Deletes the object. Deleting a missing object is a no-op.                                                                                                 |
+| `getDownloadUrl(path)`                          | Returns a Firebase-style tokenized URL (like `getDownloadURL()` in the client SDK), creating a token if needed.                                           |
+| `signedUrl(path, options?)`                     | Returns a V4 signed URL for `GET`, `PUT`, `DELETE` or `HEAD`. Signed locally, no network request.                                                         |
 
 ```ts
 const { storage } = firebase;
 
 await storage.upload('avatars/ada.png', pngBytes, {
-  contentType: 'image/png',
-  cacheControl: 'public, max-age=86400',
-  metadata: { owner: uid },
-  ifGenerationMatch: 0, // fail instead of overwriting
+    contentType: 'image/png',
+    cacheControl: 'public, max-age=86400',
+    metadata: { owner: uid },
+    ifGenerationMatch: 0, // fail instead of overwriting
 });
 
 const bytes = await storage.download('avatars/ada.png'); // Uint8Array | null
@@ -228,12 +216,12 @@ const { objects, prefixes } = await storage.list({ prefix: 'avatars/', delimiter
 
 // Let a browser upload directly, or download with a time limit
 const uploadUrl = await storage.signedUrl('avatars/ada.png', {
-  method: 'PUT',
-  contentType: 'image/png', // the client must send this exact Content-Type
-  expiresIn: 600,
+    method: 'PUT',
+    contentType: 'image/png', // the client must send this exact Content-Type
+    expiresIn: 600,
 });
 const downloadUrl = await storage.signedUrl('avatars/ada.png', {
-  responseDisposition: 'attachment; filename="ada.png"',
+    responseDisposition: 'attachment; filename="ada.png"',
 });
 
 // Long-lived public-by-link URL, same as the client SDK's getDownloadURL()
@@ -250,12 +238,12 @@ API errors are thrown as `FirebaseError`, which exposes a Firebase-style `code` 
 import { FirebaseError } from 'firebase-edge';
 
 try {
-  await firebase.auth.verifyIdToken(token);
+    await firebase.auth.verifyIdToken(token);
 } catch (error) {
-  if (error instanceof FirebaseError) {
-    console.error(error.code, error.status);
-  }
-  throw error;
+    if (error instanceof FirebaseError) {
+        console.error(error.code, error.status);
+    }
+    throw error;
 }
 ```
 
@@ -263,10 +251,10 @@ try {
 
 The package requires Node.js 20 or later and is built on standard `fetch` and Web Crypto APIs.
 
-| Runtime | Notes |
-| --- | --- |
-| Node.js | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24. |
-| Deno and Bun | CI has portable-runtime smoke-test jobs. |
+| Runtime                            | Notes                                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Node.js                            | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24.                                                |
+| Deno and Bun                       | CI has portable-runtime smoke-test jobs.                                                                               |
 | Cloudflare Workers and Vercel Edge | Designed for these Web API-based runtimes; the current CI workflow does not run a Workers or Vercel Edge isolate test. |
 
 Run the Node.js smoke test locally with:

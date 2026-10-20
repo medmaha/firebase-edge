@@ -1,4 +1,3 @@
-
 /** Data accepted by `storage.upload()`. */
 export type StorageData = string | ArrayBuffer | ArrayBufferView | Blob;
 

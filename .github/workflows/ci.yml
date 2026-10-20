@@ -1,57 +1,57 @@
 name: CI
 
 on:
-  push:
-  pull_request:
+    push:
+    pull_request:
 
 jobs:
-  node:
-    name: Node.js ${{ matrix.node-version }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ["20", "22", "24"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.24.0
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm run typecheck
-      - run: pnpm run build
-      - run: node scripts/runtime-smoke.mjs
+    node:
+        name: Node.js ${{ matrix.node-version }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                node-version: ['20', '22', '24']
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ matrix.node-version }}
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 10.24.0
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm test
+            - run: pnpm run typecheck
+            - run: pnpm run build
+            - run: node scripts/runtime-smoke.mjs
 
-  portable-runtimes:
-    name: ${{ matrix.runtime }} smoke test
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        runtime: [deno, bun]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.24.0
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - uses: denoland/setup-deno@v2
-        if: matrix.runtime == 'deno'
-        with:
-          deno-version: v2.x
-      - uses: oven-sh/setup-bun@v2
-        if: matrix.runtime == 'bun'
-      - name: Smoke test on Deno
-        if: matrix.runtime == 'deno'
-        run: deno run scripts/runtime-smoke.mjs
-      - name: Smoke test on Bun
-        if: matrix.runtime == 'bun'
-        run: bun run scripts/runtime-smoke.mjs
+    portable-runtimes:
+        name: ${{ matrix.runtime }} smoke test
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                runtime: [deno, bun]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 10.24.0
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm run build
+            - uses: denoland/setup-deno@v2
+              if: matrix.runtime == 'deno'
+              with:
+                  deno-version: v2.x
+            - uses: oven-sh/setup-bun@v2
+              if: matrix.runtime == 'bun'
+            - name: Smoke test on Deno
+              if: matrix.runtime == 'deno'
+              run: deno run scripts/runtime-smoke.mjs
+            - name: Smoke test on Bun
+              if: matrix.runtime == 'bun'
+              run: bun run scripts/runtime-smoke.mjs

@@ -16,7 +16,7 @@ export interface AuthApi {
      * @returns An object containing the user's UID, email, verification status, and claims.
      * @throws {FirebaseError} If the token is invalid, expired, or the user is disabled.
      */
-    verifyIdToken(idToken: string): Promise<{ uid: string;[key: string]: any }>;
+    verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }>;
 
     /**
      * Updates an existing user's profile and credentials across both Auth and Firestore.
@@ -55,7 +55,10 @@ export interface AuthApi {
      * @param newPassword The new password to set.
      * @returns An object containing the user's UID and whether the notification email was sent successfully.
      */
-    resetUserPassword(uid: string, newPassword: string): Promise<{ uid: string; emailSent: boolean }>;
+    resetUserPassword(
+        uid: string,
+        newPassword: string
+    ): Promise<{ uid: string; emailSent: boolean }>;
 
     /**
      * Verifies a password reset out-of-band (OOB) code.

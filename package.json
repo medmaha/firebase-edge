@@ -1,58 +1,59 @@
 {
-  "name": "firebase-edge",
-  "version": "0.1.0",
-  "description": "Zero-dependency Firebase Auth + Firestore admin utilities over REST. Runs on Cloudflare Workers, Vercel Edge, Deno, Bun and Node 20+.",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "scripts": {
-    "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:runtime": "pnpm run build && node scripts/runtime-smoke.mjs"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+    "name": "firebase-edge",
+    "version": "0.1.0",
+    "description": "Zero-dependency Firebase Auth + Firestore admin utilities over REST. Runs on Cloudflare Workers, Vercel Edge, Deno, Bun and Node 20+.",
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsup",
+        "typecheck": "tsc --noEmit",
+        "prepublishOnly": "npm run typecheck && npm test && npm run build",
+        "test": "vitest run",
+        "format": "prettier --write .",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "test:runtime": "pnpm run build && node scripts/runtime-smoke.mjs"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "sideEffects": false,
+    "engines": {
+        "node": ">=20"
+    },
+    "keywords": [
+        "firebase",
+        "firestore",
+        "identity-toolkit",
+        "edge",
+        "cloudflare-workers",
+        "rest"
+    ],
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^26.6.5",
+        "@vitest/coverage-v8": "^5.0.3",
+        "prettier": "^3.9.10",
+        "tsup": "^8.3.0",
+        "typescript": "^5.6.0",
+        "vitest": "^5.0.3"
     }
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "sideEffects": false,
-  "engines": {
-    "node": ">=20"
-  },
-  "keywords": [
-    "firebase",
-    "firestore",
-    "identity-toolkit",
-    "edge",
-    "cloudflare-workers",
-    "rest"
-  ],
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^26.6.5",
-    "@vitest/coverage-v8": "^5.0.3",
-    "prettier": "^3.9.9",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
-    "vitest": "^5.0.3"
-  }
 }

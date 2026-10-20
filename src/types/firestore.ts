@@ -1,5 +1,3 @@
-
-
 export interface FirestoreListQuery {
     /** Field path to filter on. */
     field?: string;
@@ -12,14 +10,14 @@ export interface FirestoreListQuery {
     /** Sort direction. Defaults to `ASCENDING`. */
     direction?: 'ASCENDING' | 'DESCENDING';
     op?:
-    | 'IN'
-    | 'EQUAL'
-    | 'NOT_EQUAL'
-    | 'LESS_THAN'
-    | 'LESS_THAN_OR_EQUAL'
-    | 'GREATER_THAN'
-    | 'GREATER_THAN_OR_EQUAL'
-    | 'ARRAY_CONTAINS';
+        | 'IN'
+        | 'EQUAL'
+        | 'NOT_EQUAL'
+        | 'LESS_THAN'
+        | 'LESS_THAN_OR_EQUAL'
+        | 'GREATER_THAN'
+        | 'GREATER_THAN_OR_EQUAL'
+        | 'ARRAY_CONTAINS';
     /** Opaque cursor returned by the previous page. */
     pageToken?: string;
 }
@@ -27,11 +25,11 @@ export interface FirestoreListQuery {
 export interface FirestoreApi {
     /**
      * Writes or overwrites a document in Firestore.
-     * 
+     *
      * Default: replaces the whole document.
      * With `{ merge: true }`: only the provided top-level fields are written
      * (the document is created if missing).
-     * 
+     *
      * @param collection The Firestore collection path.
      * @param docId The unique document identifier.
      * @param data The data payload to write.
@@ -48,7 +46,7 @@ export interface FirestoreApi {
      * Updates a document in Firestore.
      * Merges `data` into the document (creating it if needed) in one atomic commit.
      * `increments: { field: n }` atomically adds n to a numeric field.
-     * 
+     *
      * @param collection The Firestore collection path.
      * @param docId The unique document identifier.
      * @param data The fields to update.
@@ -63,7 +61,7 @@ export interface FirestoreApi {
 
     /**
      * Retrieves a single document from Firestore.
-     * 
+     *
      * @template T The expected document data structure type.
      * @param collection The Firestore collection path.
      * @param docId The unique document identifier.
@@ -73,7 +71,7 @@ export interface FirestoreApi {
 
     /**
      * Queries and lists documents from a collection with optional filtering, ordering, limiting, and pagination.
-     * 
+     *
      * @template T The array type of the resulting documents.
      * @param collection The Firestore collection path.
      * @param query Optional query parameters and pagination token.
@@ -86,7 +84,7 @@ export interface FirestoreApi {
 
     /**
      * Deletes a document from Firestore. Deleting a missing document is a safe no-op.
-     * 
+     *
      * @param collection The Firestore collection path.
      * @param docId The unique document identifier.
      */
