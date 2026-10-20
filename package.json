@@ -15,6 +15,7 @@
         "typecheck": "tsc --noEmit",
         "prepublishOnly": "npm run typecheck && npm test && npm run build",
         "test": "vitest run",
+        "test:workers": "pnpm run build && node scripts/workers-smoke.js",
         "format": "prettier --write .",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
@@ -55,6 +56,8 @@
     "devDependencies": {
         "@types/node": "^26.6.5",
         "@vitest/coverage-v8": "^5.0.3",
+        "esbuild": "^0.28.2",
+        "miniflare": "^4.20260730.0",
         "prettier": "^3.9.10",
         "tsup": "^8.3.0",
         "typescript": "^5.6.0",
