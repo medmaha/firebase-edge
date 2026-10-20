@@ -40,8 +40,9 @@ export function createSigner(sa: ServiceAccount): (data: Uint8Array) => Promise<
 
 /** Per-client OAuth2 token provider with caching and in-flight de-duplication. */
 export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
-    const cache = new Map<string, { token: string; expiresAt: number }>();
-    const inflight = new Map<string, Promise<string>>();
+    const _cache = new Map<string, { token: string; expiresAt: number }>();
+    const _inflight = new Map<string, Promise<string>>();
+
     const getSigningKey = createKeyLoader(sa);
 
     async function signJwt(scope: string): Promise<string> {
@@ -83,7 +84,7 @@ export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
         if (!res.ok || !data.access_token) {
             throw new Error(`Failed to get access token: ${JSON.stringify(data)}`);
         }
-        cache.set(scope, {
+        _cache.set(scope, {
             token: data.access_token,
             expiresAt: Date.now() + ((data.expires_in ?? 3600) - 60) * 1000,
         });
@@ -97,13 +98,13 @@ export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
      * @returns A promise that resolves to the access token.
      */
     function getAccessToken(scope: string): Promise<string> {
-        const cached = cache.get(scope);
+        const cached = _cache.get(scope);
         if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.token);
 
-        let pending = inflight.get(scope);
+        let pending = _inflight.get(scope);
         if (!pending) {
-            pending = fetchToken(scope).finally(() => inflight.delete(scope));
-            inflight.set(scope, pending);
+            pending = fetchToken(scope).finally(() => _inflight.delete(scope));
+            _inflight.set(scope, pending);
         }
         return pending;
     }

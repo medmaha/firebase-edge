@@ -14,20 +14,20 @@ import {
  * Initializes and returns an authentication client with methods for user management, token verification, and password resets.
  */
 export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSender): AuthApi {
-    const idt = createIdentityClient(ctx);
-    const fsAuthCollection =
+    const _idt = createIdentityClient(ctx);
+    const _fsAuthCollection =
         ctx.allowFirestoreAuthCollection === false ? null : ctx.usersCollection;
 
-    async function touchUserByEmail(email: string | undefined, data: Record<string, any>) {
-        if (!email || !fsAuthCollection) return;
-        const user = await idt.lookupUser({ email: [normalizeEmail(email)!] });
-        if (user) await fs.update(fsAuthCollection, user.localId, data);
+    async function _touchUserByEmail(email: string | undefined, data: Record<string, any>) {
+        if (!email || !_fsAuthCollection) return;
+        const user = await _idt.lookupUser({ email: [normalizeEmail(email)!] });
+        if (user) await fs.update(_fsAuthCollection, user.localId, data);
     }
 
     async function verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }> {
         let data: any;
         try {
-            data = await idt.call('/accounts:lookup', { idToken }, 'apiKey');
+            data = await _idt.call('/accounts:lookup', { idToken }, 'apiKey');
         } catch {
             throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
         }
@@ -68,12 +68,12 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         };
         if (params.phoneNumber?.trim()) body.phoneNumber = params.phoneNumber.trim();
 
-        const data = await idt.call<any>('/accounts', body, 'admin');
+        const data = await _idt.call<any>('/accounts', body, 'admin');
         if (!data.localId) throw new FirebaseError('CREATE_USER_FAILED', 'Failed to create user');
         const uid: string = data.localId;
 
         try {
-            if (fsAuthCollection) {
+            if (_fsAuthCollection) {
                 const now = Date.now();
                 const fbUser: any = {
                     email: body.email,
@@ -85,10 +85,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
                     createdAt: now,
                     updatedAt: now,
                 };
-                await fs.set(fsAuthCollection, uid, fbUser, { merge: true });
+                await fs.set(_fsAuthCollection, uid, fbUser, { merge: true });
             }
             if (claims) {
-                await idt.call(
+                await _idt.call(
                     '/accounts:update',
                     { localId: uid, customAttributes: claims },
                     'admin'
@@ -96,9 +96,9 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
             }
         } catch (err) {
             // Roll back so we don't leave a half-created user
-            await idt.call('/accounts:delete', { localId: uid }, 'admin').catch(() => {});
-            if (fsAuthCollection) {
-                await fs.delete(fsAuthCollection, uid).catch(() => {});
+            await _idt.call('/accounts:delete', { localId: uid }, 'admin').catch(() => {});
+            if (_fsAuthCollection) {
+                await fs.delete(_fsAuthCollection, uid).catch(() => {});
             }
             throw err;
         }
@@ -107,7 +107,7 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
     }
 
     async function setCustomUserClaims(uid: string, claims: Record<string, any>): Promise<void> {
-        await idt.call(
+        await _idt.call(
             '/accounts:update',
             { localId: uid, customAttributes: serializeClaims(claims) },
             'admin'
@@ -115,10 +115,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
     }
 
     async function updateUser(uid: string, payload: Record<string, any>): Promise<void> {
-        const user = await idt.lookupUser({ localId: [uid] });
+        const user = await _idt.lookupUser({ localId: [uid] });
         if (!user) throw new FirebaseError('USER_NOT_FOUND', 'User not found', 404);
 
-        const firestorePayload = fsAuthCollection ? { ...payload } : {};
+        const firestorePayload = _fsAuthCollection ? { ...payload } : {};
         delete firestorePayload.password;
         delete firestorePayload.disableUser;
 
@@ -140,26 +140,26 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         }
 
         // Update the firestore users collection first
-        if (fsAuthCollection) await fs.update(fsAuthCollection, uid, firestorePayload);
+        if (_fsAuthCollection) await fs.update(_fsAuthCollection, uid, firestorePayload);
 
         // Only make the auth update when necessary
         if (Object.keys(authPayload).length > 1) {
-            await idt.call('/accounts:update', authPayload, 'admin');
+            await _idt.call('/accounts:update', authPayload, 'admin');
         }
     }
 
     async function disableUser(uid: string, disabled?: boolean) {
         let target = disabled;
         if (target === undefined) {
-            const user = await idt.lookupUser({ localId: [uid] });
+            const user = await _idt.lookupUser({ localId: [uid] });
             if (!user) throw new FirebaseError('USER_NOT_FOUND', 'User not found', 404);
             target = !user.disabled;
         }
 
-        await idt.call('/accounts:update', { localId: uid, disableUser: target }, 'admin');
-        if (fsAuthCollection) {
+        await _idt.call('/accounts:update', { localId: uid, disableUser: target }, 'admin');
+        if (_fsAuthCollection) {
             const now = Date.now();
-            await fs.update(fsAuthCollection, uid, {
+            await fs.update(_fsAuthCollection, uid, {
                 updatedAt: now,
                 disabled: target,
                 disabledAt: target ? now : null,
@@ -170,11 +170,11 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
 
     async function deleteUserPermanent(uid: string) {
         try {
-            if (fsAuthCollection) {
+            if (_fsAuthCollection) {
                 // deleting firestore because auth delete is irreversible and is the only link to firestore
-                await fs.delete(fsAuthCollection, uid);
+                await fs.delete(_fsAuthCollection, uid);
             }
-            await idt.call('/accounts:delete', { localId: uid }, 'admin');
+            await _idt.call('/accounts:delete', { localId: uid }, 'admin');
             return { success: true };
         } catch (error) {
             if (String(error).includes('USER_NOT_FOUND')) return { success: true };
@@ -185,10 +185,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
     async function resetUserPassword(uid: string, newPassword: string) {
         assertPassword(newPassword, ctx.minAuthPasswordLength);
 
-        const user = await idt.lookupUser({ localId: [uid] });
+        const user = await _idt.lookupUser({ localId: [uid] });
         if (!user) throw new FirebaseError('USER_NOT_FOUND', 'User not found', 404);
 
-        await idt.call(
+        await _idt.call(
             '/accounts:update',
             {
                 localId: uid,
@@ -198,10 +198,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
             'admin'
         );
 
-        if (fsAuthCollection) {
+        if (_fsAuthCollection) {
             const now = Date.now();
             await fs.update(
-                fsAuthCollection,
+                _fsAuthCollection,
                 uid,
                 { updatedAt: now, passwordResetAt: now },
                 { increments: { passwordResetCount: 1 } }
@@ -231,11 +231,11 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         if (!email) return;
         const normalized = normalizeEmail(email)!;
 
-        const user = await idt.lookupUser({ email: [normalized] });
+        const user = await _idt.lookupUser({ email: [normalized] });
         if (!user || user.disabled) return;
 
         try {
-            await idt.call(
+            await _idt.call(
                 '/accounts:sendOobCode',
                 {
                     requestType: 'PASSWORD_RESET',
@@ -250,32 +250,32 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         }
 
         const now = Date.now();
-        if (fsAuthCollection)
-            await fs.update(fsAuthCollection, user.localId, {
+        if (_fsAuthCollection)
+            await fs.update(_fsAuthCollection, user.localId, {
                 updatedAt: now,
                 passwordResetLinkSentAt: now,
             });
     }
 
     async function verifyPasswordResetCode(oobCode: string): Promise<{ email: string }> {
-        const data = await idt.call<any>('/accounts:resetPassword', { oobCode }, 'apiKey');
+        const data = await _idt.call<any>('/accounts:resetPassword', { oobCode }, 'apiKey');
         if (data.requestType && data.requestType !== 'PASSWORD_RESET') {
             throw new FirebaseError('INVALID_OOB_CODE', 'Not a password reset code');
         }
         const now = Date.now();
-        await touchUserByEmail(data.email, { updatedAt: now, passwordResetLinkVerifiedAt: now });
+        await _touchUserByEmail(data.email, { updatedAt: now, passwordResetLinkVerifiedAt: now });
         return { email: data.email };
     }
 
     async function confirmPasswordReset(oobCode: string, newPassword: string) {
         assertPassword(newPassword, ctx.minAuthPasswordLength);
-        const data = await idt.call<{ email: string }>(
+        const data = await _idt.call<{ email: string }>(
             '/accounts:resetPassword',
             { oobCode, newPassword },
             'apiKey'
         );
         const now = Date.now();
-        await touchUserByEmail(data.email, { updatedAt: now, passwordResetConfirmedAt: now });
+        await _touchUserByEmail(data.email, { updatedAt: now, passwordResetConfirmedAt: now });
         return { email: data.email };
     }
 

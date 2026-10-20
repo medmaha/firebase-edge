@@ -20,7 +20,7 @@ const SCOPE_DATASTORE = 'https://www.googleapis.com/auth/datastore';
  * @param ctx The application context containing configuration, database name, and token providers.
  */
 export function createFirestore(ctx: Context): FirestoreApi {
-    async function request(url: string, init: RequestInit, fallback: string): Promise<Response> {
+    async function _request(url: string, init: RequestInit, fallback: string): Promise<Response> {
         const token = await ctx.getAccessToken(SCOPE_DATASTORE);
         const res = await ctx.fetchFn(url, {
             ...init,
@@ -41,7 +41,30 @@ export function createFirestore(ctx: Context): FirestoreApi {
         return res;
     }
 
-    const docsBase = `${FIRESTORE_BASE}/projects/${ctx.projectId}/databases/(${ctx.databaseName.replace(/\(\)/g, '')})/documents`;
+    async function _runListQuery(collection: string, structureQuery: any): Promise<any[]> {
+        const res = await _request(
+            `${_docsBase}:runQuery`,
+            { method: 'POST', body: JSON.stringify({ structureQuery }) },
+            'Firestore document query failed'
+        );
+        if (!res.ok) {
+            throw new FirebaseError(
+                'QUERY_FAILED',
+                `Failed to perform firestore query of collection ${collection}`
+            );
+        }
+        const rows: any[] = await res.json();
+        return rows.filter((row) => row.document);
+    }
+
+    function _decodeListRows(rows: any[]): Array<Record<string, any>> {
+        return rows.map((row) => ({
+            ...decodeFields(row.document.fields || {}),
+            id: row.document.name.split('/').pop(),
+        }));
+    }
+
+    const _docsBase = `${FIRESTORE_BASE}/projects/${ctx.projectId}/databases/(${ctx.databaseName.replace(/\(\)/g, '')})/documents`;
 
     async function set(
         collection: string,
@@ -62,8 +85,8 @@ export function createFirestore(ctx: Context): FirestoreApi {
                     .join('&');
         }
 
-        const res = await request(
-            `${docsBase}/${encodeDocPath(collection, docId)}${query}`,
+        const res = await _request(
+            `${_docsBase}/${encodeDocPath(collection, docId)}${query}`,
             { method: 'PATCH', body: JSON.stringify({ fields }) },
             'Firestore write failed'
         );
@@ -96,8 +119,8 @@ export function createFirestore(ctx: Context): FirestoreApi {
         };
         if (updateTransforms.length) write.updateTransforms = updateTransforms;
 
-        await request(
-            `${docsBase}:commit`,
+        await _request(
+            `${_docsBase}:commit`,
             { method: 'POST', body: JSON.stringify({ writes: [write] }) },
             'Firestore update failed'
         );
@@ -107,8 +130,8 @@ export function createFirestore(ctx: Context): FirestoreApi {
         collection: string,
         docId: string
     ): Promise<T | null> {
-        const res = await request(
-            `${docsBase}/${encodeDocPath(collection, docId)}`,
+        const res = await _request(
+            `${_docsBase}/${encodeDocPath(collection, docId)}`,
             { method: 'GET' },
             'Firestore read failed'
         );
@@ -151,8 +174,8 @@ export function createFirestore(ctx: Context): FirestoreApi {
             };
         }
 
-        const rows = await runListQuery(collection, structureQuery);
-        const documents = decodeListRows(rows) as T;
+        const rows = await _runListQuery(collection, structureQuery);
+        const documents = _decodeListRows(rows) as T;
         let nextPageToken: string | undefined;
 
         if (rows.length === limit) {
@@ -175,34 +198,11 @@ export function createFirestore(ctx: Context): FirestoreApi {
     }
 
     async function remove(collection: string, docId: string): Promise<void> {
-        await request(
-            `${docsBase}/${encodeDocPath(collection, docId)}`,
+        await _request(
+            `${_docsBase}/${encodeDocPath(collection, docId)}`,
             { method: 'DELETE' },
             'Firestore delete failed'
         );
-    }
-
-    async function runListQuery(collection: string, structureQuery: any): Promise<any[]> {
-        const res = await request(
-            `${docsBase}:runQuery`,
-            { method: 'POST', body: JSON.stringify({ structureQuery }) },
-            'Firestore document query failed'
-        );
-        if (!res.ok) {
-            throw new FirebaseError(
-                'QUERY_FAILED',
-                `Failed to perform firestore query of collection ${collection}`
-            );
-        }
-        const rows: any[] = await res.json();
-        return rows.filter((row) => row.document);
-    }
-
-    function decodeListRows(rows: any[]): Array<Record<string, any>> {
-        return rows.map((row) => ({
-            ...decodeFields(row.document.fields || {}),
-            id: row.document.name.split('/').pop(),
-        }));
     }
 
     return { set, update, get, list, delete: remove };
