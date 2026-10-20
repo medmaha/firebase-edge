@@ -9,13 +9,11 @@ export interface ServiceAccount {
   privateKeyId: string;
 }
 
-/** Per-client OAuth2 token provider with caching and in-flight de-duplication. */
-export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
-  const cache = new Map<string, { token: string; expiresAt: number }>();
-  const inflight = new Map<string, Promise<string>>();
-  let signingKey: Promise<CryptoKey> | null = null;
 
-  function getSigningKey(): Promise<CryptoKey> {
+/** Lazily imports (and caches) the service-account key for RSASSA-PKCS1-v1_5 / SHA-256 signing. */
+function createKeyLoader(sa: ServiceAccount): () => Promise<CryptoKey> {
+  let signingKey: Promise<CryptoKey> | null = null;
+  return () => {
     if (!signingKey) {
       signingKey = crypto.subtle
         .importKey(
@@ -31,7 +29,21 @@ export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
         });
     }
     return signingKey;
-  }
+  };
+}
+
+/** Signs arbitrary bytes with the service-account key (RSA-SHA256). Used for Storage signed URLs. */
+export function createSigner(sa: ServiceAccount): (data: Uint8Array) => Promise<ArrayBuffer> {
+  const getSigningKey = createKeyLoader(sa);
+  return async (data) =>
+    crypto.subtle.sign('RSASSA-PKCS1-v1_5', await getSigningKey(), data as BufferSource);
+}
+
+/** Per-client OAuth2 token provider with caching and in-flight de-duplication. */
+export function createTokenProvider(sa: ServiceAccount, fetchFn: typeof fetch) {
+  const cache = new Map<string, { token: string; expiresAt: number }>();
+  const inflight = new Map<string, Promise<string>>();
+  const getSigningKey = createKeyLoader(sa);
 
   async function signJwt(scope: string): Promise<string> {
     const now = Math.floor(Date.now() / 1000);

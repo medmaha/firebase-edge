@@ -27,6 +27,8 @@ export interface FirebaseConfig {
   databaseName?: string;
   /** Firestore collection holding user profile docs. Default: "users" */
   usersCollection?: string;
+  /** Cloud Storage bucket used by `storage`. Default: `<projectId>.firebasestorage.app` (older projects: `<projectId>.appspot.com`). */
+  storageBucket?: string;
   /** Optional minimum password length requirement for authentication. Defaults: 6 */
   minAuthPasswordLength?: number;
   /** Optional email sender function used to notify users (e.g., for password resets). */
@@ -44,6 +46,10 @@ export interface Context {
   usersCollection: string;
   allowFirestoreAuthCollection?: boolean
   minAuthPasswordLength?: number
+  storageBucket: string;
+  clientEmail: string;
   fetchFn: typeof fetch;
   getAccessToken(scope: string): Promise<string>;
+  /** Signs bytes with the service-account private key (RSA-SHA256). */
+  sign(data: Uint8Array): Promise<ArrayBuffer>;
 }
