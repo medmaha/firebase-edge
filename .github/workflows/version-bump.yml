@@ -1,0 +1,106 @@
+name: Prepare npm release
+
+on:
+    workflow_run:
+        workflows: ['CI']
+        types: [completed]
+        branches: [main]
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: prepare-npm-release-main
+    cancel-in-progress: false
+
+jobs:
+    release:
+        if: >-
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out main
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+                  token: ${{ secrets.RELEASE_TOKEN }}
+
+            - name: Find merged version bump PR
+              id: version_pr
+              uses: actions/github-script@v7
+              with:
+                  github-token: ${{ secrets.RELEASE_TOKEN }}
+                  script: |
+                      const { owner, repo } = context.repo;
+                      const { data: pullRequests } =
+                          await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                              owner,
+                              repo,
+                              commit_sha: context.payload.workflow_run.head_sha,
+                          });
+                      const releasePr = pullRequests.find(
+                          (pr) =>
+                              pr.base.ref === 'main' &&
+                              pr.head.ref === 'automation/version-bump' &&
+                              pr.merged_at
+                      );
+                      core.setOutput('merged', releasePr ? 'true' : 'false');
+
+            - name: Tag the merged package version
+              if: steps.version_pr.outputs.merged == 'true'
+              env:
+                  TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "Expected a stable semver package version, got: $VERSION"
+                    exit 1
+                  fi
+                  TAG="v$VERSION"
+                  if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+                    git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
+                    EXISTING_SHA=$(git rev-parse "$TAG^{}")
+                    if [[ "$EXISTING_SHA" != "$TARGET_SHA" ]]; then
+                      echo "Tag $TAG already points to $EXISTING_SHA, not $TARGET_SHA; refusing to move it."
+                      exit 1
+                    fi
+                    echo "Tag $TAG already points to this commit."
+                    exit 0
+                  fi
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  git tag -a "$TAG" -m "Release $TAG" "$TARGET_SHA"
+                  git push origin "$TAG"
+
+            - name: Bump patch version
+              if: steps.version_pr.outputs.merged != 'true'
+              id: bump
+              run: |
+                  node <<'NODE'
+                  const fs = require('node:fs');
+                  const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+                  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(packageJson.version);
+                  if (!match) {
+                      throw new Error(`Expected a stable semver package version, got: ${packageJson.version}`);
+                  }
+                  packageJson.version = `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+                  fs.writeFileSync('package.json', `${JSON.stringify(packageJson, null, 4)}\n`);
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${packageJson.version}\n`);
+                  NODE
+
+            - name: Create or update version bump PR
+              if: steps.version_pr.outputs.merged != 'true'
+              uses: peter-evans/create-pull-request@v7
+              with:
+                  token: ${{ secrets.RELEASE_TOKEN }}
+                  branch: automation/version-bump
+                  delete-branch: true
+                  commit-message: 'chore(release): bump version to v${{ steps.bump.outputs.version }}'
+                  title: 'chore(release): bump version to v${{ steps.bump.outputs.version }}'
+                  body: |
+                      Automated patch version bump after successful CI on `main`.
+
+                      Merging this PR after CI passes will create the matching `v${{ steps.bump.outputs.version }}` tag and trigger the npm publish workflow.
