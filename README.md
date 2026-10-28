@@ -2,6 +2,8 @@
 
 Firebase Authentication, Firestore and Cloud Storage helpers that use Google's REST APIs. The package has no runtime dependencies and uses standard `fetch` and Web Crypto APIs.
 
+The project started with a specific problem: setting Firebase Auth custom claims from Cloudflare Workers, where the Node.js-based `firebase-admin` SDK was not a fit. It quickly grew beyond that use case into a lightweight REST client for Firebase Authentication, Firestore, and Cloud Storage across edge and server-side runtimes.
+
 It is intended for server-side use in Node.js 20+, Deno, Bun, Cloudflare Workers, and Vercel Edge. It uses service-account credentials with administrative access: **never expose your private key to a browser or commit it to your repository.**
 
 ## Install
@@ -31,10 +33,10 @@ import { configFromEnv, createFirebaseEdge, generateDocId } from 'firebase-edge'
 const firebase = createFirebaseEdge(configFromEnv(process.env));
 
 const { uid } = await firebase.auth.createUser({
-    email: 'ada@example.com',
+    email: 'someone@example.com',
     password: 'correct-horse-battery',
-    displayName: 'John Doe',
-    claims: { role: 'admin' },
+    displayName: 'Some Dude',
+    claims: { role: 'basic' },
 });
 
 const tokenInfo = await firebase.auth.verifyIdToken(idToken);
@@ -204,28 +206,28 @@ The timestamps in these profile fields are epoch milliseconds. Custom claims are
 ```ts
 const { storage } = firebase;
 
-await storage.upload('avatars/ada.png', pngBytes, {
+await storage.upload('avatars/me.png', pngBytes, {
     contentType: 'image/png',
     cacheControl: 'public, max-age=86400',
     metadata: { owner: uid },
     ifGenerationMatch: 0, // fail instead of overwriting
 });
 
-const bytes = await storage.download('avatars/ada.png'); // Uint8Array | null
+const bytes = await storage.download('avatars/me.png'); // Uint8Array | null
 const { objects, prefixes } = await storage.list({ prefix: 'avatars/', delimiter: '/' });
 
 // Let a browser upload directly, or download with a time limit
-const uploadUrl = await storage.signedUrl('avatars/ada.png', {
+const uploadUrl = await storage.signedUrl('avatars/me.png', {
     method: 'PUT',
     contentType: 'image/png', // the client must send this exact Content-Type
     expiresIn: 600,
 });
-const downloadUrl = await storage.signedUrl('avatars/ada.png', {
-    responseDisposition: 'attachment; filename="ada.png"',
+const downloadUrl = await storage.signedUrl('avatars/me.png', {
+    responseDisposition: 'attachment; filename="me.png"',
 });
 
 // Long-lived public-by-link URL, same as the client SDK's getDownloadURL()
-const permanentUrl = await storage.getDownloadUrl('avatars/ada.png');
+const permanentUrl = await storage.getDownloadUrl('avatars/me.png');
 ```
 
 Object names follow Cloud Storage rules: 1 to 1,024 bytes, no leading `/`, and no `.` or `..` segments. Signed URLs last at most 7 days. Failures are thrown as `FirebaseError` with the Cloud Storage error reason (for example `conditionNotMet`) as `code`.
