@@ -9,14 +9,29 @@ export interface CreateUserPayload {
     phoneNumber?: string | null;
 }
 
+export interface VerifyIdTokenOptions {
+    /**
+     * Verification mode. `remote` (the default) checks the token with Firebase and detects
+     * disabled users/current claims. `local` verifies the JWT signature against Google's JWKS.
+     */
+    mode?: 'remote' | 'local';
+}
+
 export interface AuthApi {
     /**
-     * Verifies a Firebase ID token and returns the corresponding user details and custom claims.
+     * Verifies a Firebase ID token and returns its claims.
      * @param idToken The JWT ID token to verify.
-     * @returns An object containing the user's UID, email, verification status, and claims.
+     * @param options Use `mode: 'local'` to verify against cached Google signing keys without a
+     * network request per call. Local verification does not detect disabled/revoked users and
+     * returns claims as they were when the token was issued. The default `remote` mode checks
+     * the user with Firebase on each call.
+     * @returns An object containing the token claims, UID, email, and verification status.
      * @throws {FirebaseError} If the token is invalid, expired, or the user is disabled.
      */
-    verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }>;
+    verifyIdToken(
+        idToken: string,
+        options?: VerifyIdTokenOptions
+    ): Promise<{ uid: string; [key: string]: any }>;
 
     /**
      * Updates an existing user's profile and credentials across both Auth and Firestore.

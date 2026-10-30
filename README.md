@@ -112,7 +112,7 @@ The `auth` client provides:
 | Method                                       | Purpose                                                                                                                      |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `createUser(options)`                        | Creates an Auth user and, by default, a matching Firestore profile. Requires a password and either an email or phone number. |
-| `verifyIdToken(token)`                       | Looks up and verifies the ID token with Firebase, returning the UID, email, verification state, and custom claims.           |
+| `verifyIdToken(token, options?)`             | Verifies an ID token with Firebase by default, or locally against Google's signing keys when opted in.                       |
 | `setCustomUserClaims(uid, claims)`           | Sets the user's custom claims in Auth. This replaces the custom-claims object.                                               |
 | `updateUser(uid, fields)`                    | Updates supported Auth fields and the Firestore profile. Passwords are not copied into Firestore.                            |
 | `disableUser(uid, disabled?)`                | Sets the disabled state, or toggles it when `disabled` is omitted.                                                           |
@@ -130,7 +130,15 @@ await firebase.auth.setCustomUserClaims(uid, { role: 'admin' });
 
 Claims are stored on the Auth user; they are not automatically copied into the Firestore profile. Custom claims are limited to 1,000 bytes.
 
-`verifyIdToken()` makes a network request to Firebase for each verification. This lets it detect disabled users and return current claims, but adds request latency and uses the Identity Toolkit API.
+By default, `verifyIdToken()` checks the token with Firebase on every call. This detects disabled users and returns current claims, but adds request latency and uses the Identity Toolkit API.
+
+For lower latency and no verification request per call, opt into local verification:
+
+```ts
+const claims = await firebase.auth.verifyIdToken(idToken, { mode: 'local' });
+```
+
+Local mode verifies the RS256 signature against Google's Secure Token JWKS and checks the issuer, project audience, expiration, issue time, and subject. Signing keys are cached according to Google's `Cache-Control` headers, and concurrent cache misses share one fetch. Since this mode only trusts the token itself, disabled or revoked users are not detected until their token expires (up to one hour), and custom claims may be stale until a new token is issued. Use the default remote mode when those checks need to be current.
 
 ## Firestore
 
@@ -253,12 +261,12 @@ try {
 
 The package requires Node.js 20 or later and is built on standard `fetch` and Web Crypto APIs.
 
-| Runtime                            | Notes                                                                                                                  |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Node.js                            | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24.                                                |
-| Deno and Bun                       | CI has portable-runtime smoke-test jobs.                                                                               |
-| Cloudflare Workers (workerd)       | Tested in CI using Miniflare and the shared runtime smoke test.                                                       |
-| Vercel Edge                        | Designed for this Web API-based runtime; CI does not currently run a Vercel Edge isolate test.                       |
+| Runtime                      | Notes                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| Node.js                      | Requires Node.js 20 or later. CI is configured for Node 20, 22, and 24.                        |
+| Deno and Bun                 | CI has portable-runtime smoke-test jobs.                                                       |
+| Cloudflare Workers (workerd) | Tested in CI using Miniflare and the shared runtime smoke test.                                |
+| Vercel Edge                  | Designed for this Web API-based runtime; CI does not currently run a Vercel Edge isolate test. |
 
 Run the Node.js and Cloudflare Workers smoke tests locally with:
 

@@ -89,7 +89,7 @@ export function configFromEnv(
     };
 }
 
-export type { AuthApi, CreateUserPayload } from './types/auth';
+export type { AuthApi, CreateUserPayload, VerifyIdTokenOptions } from './types/auth';
 export type { FirestoreApi, FirestoreListQuery } from './types/firestore';
 export type {
     StorageApi,
