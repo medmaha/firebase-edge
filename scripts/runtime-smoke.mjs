@@ -71,17 +71,17 @@ const fetchFn = async (input, init = {}) => {
     }
 
     if (url.endsWith(':runQuery')) {
-        const { structureQuery } = JSON.parse(String(init.body));
-        assert(structureQuery.limit === 1, 'Firestore query did not preserve the page size');
+        const { structuredQuery } = JSON.parse(String(init.body));
+        assert(structuredQuery.limit === 1, 'Firestore query did not preserve the page size');
         assert(
-            structureQuery.orderBy?.[0]?.field?.fieldPath === '__name__',
+            structuredQuery.orderBy?.[0]?.field?.fieldPath === '__name__',
             'Firestore pagination did not use document-name ordering'
         );
         if (queryRequests === 0) {
-            assert(!structureQuery.startAt, 'First page unexpectedly included a cursor');
+            assert(!structuredQuery.startAt, 'First page unexpectedly included a cursor');
         } else {
             assert(
-                structureQuery.startAt?.values?.[0]?.referenceValue?.endsWith('/items/a'),
+                structuredQuery.startAt?.values?.[0]?.referenceValue?.endsWith('/items/a'),
                 'Next page did not use the previous document as its cursor'
             );
         }
