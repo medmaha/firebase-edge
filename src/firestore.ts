@@ -41,10 +41,10 @@ export function createFirestore(ctx: Context): FirestoreApi {
         return res;
     }
 
-    async function _runListQuery(collection: string, structureQuery: any): Promise<any[]> {
+    async function _runListQuery(collection: string, structuredQuery: any): Promise<any[]> {
         const res = await _request(
             `${_docsBase}:runQuery`,
-            { method: 'POST', body: JSON.stringify({ structureQuery }) },
+            { method: 'POST', body: JSON.stringify({ structuredQuery }) },
             'Firestore document query failed'
         );
         if (!res.ok) {
@@ -154,27 +154,27 @@ export function createFirestore(ctx: Context): FirestoreApi {
               ]
             : [{ fieldPath: '__name__', direction: 'ASCENDING' }];
 
-        const structureQuery = makeListQuery(collection, query);
-        structureQuery.limit = limit;
-        structureQuery.orderBy = orderFields.map(({ fieldPath, direction }) => ({
+        const structuredQuery = makeListQuery(collection, query);
+        structuredQuery.limit = limit;
+        structuredQuery.orderBy = orderFields.map(({ fieldPath, direction }) => ({
             direction,
             field: { fieldPath },
         }));
 
         const queryKey = JSON.stringify({
             collection,
-            where: structureQuery.where,
+            where: structuredQuery.where,
             orderBy: orderFields,
         });
         const valueCount = orderFields.length;
         if (query.pageToken !== undefined) {
-            structureQuery.startAt = {
+            structuredQuery.startAt = {
                 values: decodePageToken(query.pageToken, queryKey, valueCount),
                 before: false,
             };
         }
 
-        const rows = await _runListQuery(collection, structureQuery);
+        const rows = await _runListQuery(collection, structuredQuery);
         const documents = _decodeListRows(rows) as T;
         let nextPageToken: string | undefined;
 
@@ -214,13 +214,13 @@ export function createFirestore(ctx: Context): FirestoreApi {
  * Supports a maximum of 500 records per request.
  */
 function makeListQuery(collection: string, query: FirestoreListQuery): any {
-    const structureQuery: any = {
+    const structuredQuery: any = {
         limit: Math.min(query.limit || 100, 500),
         from: [{ collectionId: collection }],
     };
 
     if (query.field && query.op) {
-        structureQuery.where = {
+        structuredQuery.where = {
             fieldFilter: {
                 op: query.op,
                 value: toFirestoreValue(query.value),
@@ -230,12 +230,12 @@ function makeListQuery(collection: string, query: FirestoreListQuery): any {
     }
 
     if (query.orderBy) {
-        structureQuery.orderBy = [
+        structuredQuery.orderBy = [
             {
                 direction: query.direction ?? 'ASCENDING',
                 field: { fieldPath: query.orderBy },
             },
         ];
     }
-    return structureQuery;
+    return structuredQuery;
 }

@@ -331,7 +331,7 @@ describe('firestore.list', () => {
         expect(calls).toHaveLength(1);
         expect(calls[0].url).toBe(`${FS_DOCS}:runQuery`);
         expect(calls[0].body).toEqual({
-            structureQuery: {
+            structuredQuery: {
                 limit: 100,
                 from: [{ collectionId: 'users' }],
                 orderBy: [
@@ -361,7 +361,7 @@ describe('firestore.list', () => {
             nextPageToken: undefined,
         });
         expect(calls[0].body).toEqual({
-            structureQuery: {
+            structuredQuery: {
                 limit: 25,
                 from: [{ collectionId: 'orders' }],
                 where: {
@@ -388,7 +388,7 @@ describe('firestore.list', () => {
     it('caps the requested limit at 500', async () => {
         const { ctx, calls } = makeCtx(routes([[`POST ${FS_DOCS}:runQuery`, () => []]]));
         await createFirestore(ctx).list('users', { limit: 1000 });
-        expect(calls[0].body.structureQuery.limit).toBe(500);
+        expect(calls[0].body.structuredQuery.limit).toBe(500);
     });
 
     it('returns a stable cursor token and uses it to fetch the next ordered page', async () => {
@@ -425,7 +425,7 @@ describe('firestore.list', () => {
             { id: 'o2', createdAt: new Date('2026-01-01T00:00:00Z'), total: 20 },
         ]);
         expect(firstPage.nextPageToken).toBeTruthy();
-        expect(calls[0].body.structureQuery.orderBy).toEqual([
+        expect(calls[0].body.structuredQuery.orderBy).toEqual([
             { direction: 'DESCENDING', field: { fieldPath: 'createdAt' } },
             { direction: 'DESCENDING', field: { fieldPath: '__name__' } },
         ]);
@@ -438,7 +438,7 @@ describe('firestore.list', () => {
             { id: 'o3', createdAt: new Date('2026-01-02T00:00:00Z'), total: 10 },
             { id: 'o4', createdAt: new Date('2026-01-02T00:00:00Z'), total: 20 },
         ]);
-        expect(calls[1].body.structureQuery.startAt).toEqual({
+        expect(calls[1].body.structuredQuery.startAt).toEqual({
             values: [
                 { timestampValue: '2026-01-01T00:00:00Z' },
                 { referenceValue: DOC_NAME('orders/o2') },
