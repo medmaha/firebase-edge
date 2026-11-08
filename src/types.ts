@@ -1,3 +1,5 @@
+import type { LogLevel, Logger, LoggerOptions } from './logger';
+
 export interface EmailMessage {
     to: string;
     subject: string;
@@ -35,6 +37,15 @@ export interface FirebaseConfig {
     emailSender?: EmailSender;
     /** Custom fetch implementation (testing / proxies). Defaults to global fetch. */
     fetchFn?: typeof fetch;
+    /**
+     * Opt-in diagnostic logging. Off by default (nothing is emitted).
+     * - a level: `'error' | 'warn' | 'info' | 'debug' | 'trace'` (logged to the console)
+     * - `true`: shorthand for `'info'`
+     * - `{ level?, sink? }`: route entries to your own logger
+     * Credentials are always redacted. `'trace'` additionally records request/response
+     * payloads (application data is NOT redacted), so use it for local debugging only.
+     */
+    logger?: LogLevel | boolean | LoggerOptions;
 }
 
 /** @internal */
@@ -48,6 +59,8 @@ export interface Context {
     storageBucket: string;
     clientEmail: string;
     fetchFn: typeof fetch;
+    /** Diagnostic logger. Absent means logging is disabled. */
+    log?: Logger;
     getAccessToken(scope: string): Promise<string>;
     /** Signs bytes with the service-account private key (RSA-SHA256). */
     sign(data: Uint8Array): Promise<ArrayBuffer>;

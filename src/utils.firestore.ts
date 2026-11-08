@@ -69,10 +69,12 @@ export function decodePageToken(token: string, queryKey: string, valueCount: num
             throw new Error('Incompatible token');
         }
         return decoded.values;
-    } catch {
+    } catch (cause) {
         throw new FirebaseError(
             'INVALID_PAGE_TOKEN',
-            'Invalid or incompatible Firestore page token'
+            'Invalid or incompatible Firestore page token',
+            undefined,
+            { cause }
         );
     }
 }
