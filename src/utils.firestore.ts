@@ -1,5 +1,5 @@
 import { FirebaseError } from './errors';
-import { base64UrlEncode } from './utils';
+import { base64UrlDecodeJson, base64UrlEncode } from './utils';
 
 /** Field paths with special characters must be wrapped in backticks. */
 export function toFieldPath(key: string): string {
@@ -54,11 +54,11 @@ export function encodePageToken(queryKey: string, values: any[]): string {
 
 export function decodePageToken(token: string, queryKey: string, valueCount: number): any[] {
     try {
-        if (!/^[A-Za-z0-9_-]+$/.test(token)) throw new Error('Invalid token encoding');
-        const base64 = token.replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-        const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
-        const decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+        const payload = base64UrlDecodeJson(token);
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            throw new Error('Invalid token payload');
+        }
+        const decoded = payload as Record<string, unknown>;
         if (
             decoded.version !== 1 ||
             decoded.queryKey !== queryKey ||

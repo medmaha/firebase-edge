@@ -11,3 +11,7 @@ export class FirebaseError extends Error {
         if (options && 'cause' in options) this.cause = options.cause;
     }
 }
+
+export function invalidIdTokenError(): FirebaseError {
+    return new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
+}

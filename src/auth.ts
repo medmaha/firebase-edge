@@ -1,8 +1,9 @@
-import { FirebaseError } from './errors';
+import { FirebaseError, invalidIdTokenError } from './errors';
 import { createIdentityClient } from './identity';
 import { noopLogger } from './logger';
+import { createIdTokenVerifier } from './jwks';
 import type { Context, EmailSender } from './types';
-import { AuthApi, CreateUserPayload } from './types/auth';
+import { AuthApi, CreateUserPayload, VerifyIdTokenOptions } from './types/auth';
 import type { FirestoreApi } from './types/firestore';
 import {
     assertEmailOrPhoneNumber,
@@ -17,6 +18,7 @@ import {
 export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSender): AuthApi {
     const log = (ctx.log ?? noopLogger).child('auth');
     const _idt = createIdentityClient(ctx);
+    const _verifyIdTokenLocally = createIdTokenVerifier(ctx.projectId, ctx.fetchFn);
     const _fsAuthCollection =
         ctx.allowFirestoreAuthCollection === false ? null : ctx.usersCollection;
 
@@ -27,7 +29,15 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         else log.debug('no user matched the email; firestore profile not updated');
     }
 
-    async function verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }> {
+    async function verifyIdToken(
+        idToken: string,
+        options?: VerifyIdTokenOptions
+    ): Promise<{ uid: string; [key: string]: any }> {
+        if (options?.mode === 'local') return _verifyIdTokenLocally(idToken);
+        if (options?.mode !== undefined && options.mode !== 'remote') {
+            throw new FirebaseError('INVALID_ARGUMENT', 'Unsupported ID token verification mode');
+        }
+
         let data: any;
         try {
             data = await _idt.call('/accounts:lookup', { idToken }, 'apiKey');
@@ -45,7 +55,7 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
             throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401, { cause: err });
         }
         const user = data.users?.[0];
-        if (!user) throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
+        if (!user) throw invalidIdTokenError();
         if (user.disabled) throw new FirebaseError('USER_DISABLED', 'User is disabled', 403);
 
         let customClaims: Record<string, any> = {};
