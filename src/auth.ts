@@ -1,5 +1,6 @@
 import { FirebaseError } from './errors';
 import { createIdentityClient } from './identity';
+import { noopLogger } from './logger';
 import type { Context, EmailSender } from './types';
 import { AuthApi, CreateUserPayload } from './types/auth';
 import type { FirestoreApi } from './types/firestore';
@@ -14,6 +15,7 @@ import {
  * Initializes and returns an authentication client with methods for user management, token verification, and password resets.
  */
 export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSender): AuthApi {
+    const log = (ctx.log ?? noopLogger).child('auth');
     const _idt = createIdentityClient(ctx);
     const _fsAuthCollection =
         ctx.allowFirestoreAuthCollection === false ? null : ctx.usersCollection;
@@ -22,14 +24,25 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         if (!email || !_fsAuthCollection) return;
         const user = await _idt.lookupUser({ email: [normalizeEmail(email)!] });
         if (user) await fs.update(_fsAuthCollection, user.localId, data);
+        else log.debug('no user matched the email; firestore profile not updated');
     }
 
     async function verifyIdToken(idToken: string): Promise<{ uid: string; [key: string]: any }> {
         let data: any;
         try {
             data = await _idt.call('/accounts:lookup', { idToken }, 'apiKey');
-        } catch {
-            throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
+        } catch (err) {
+            // Rejections (4xx) are the normal "bad token" path; anything else hides a real fault.
+            const expected = err instanceof FirebaseError && !!err.status && err.status < 500;
+            if (expected) log.debug('verifyIdToken: token rejected by Identity Toolkit', undefined, err);
+            else {
+                log.warn(
+                    'verifyIdToken: lookup failed for a non-auth reason; reported to the caller as INVALID_ID_TOKEN',
+                    undefined,
+                    err
+                );
+            }
+            throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401, { cause: err });
         }
         const user = data.users?.[0];
         if (!user) throw new FirebaseError('INVALID_ID_TOKEN', 'Invalid or expired token', 401);
@@ -39,7 +52,13 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         if (user.customAttributes) {
             try {
                 customClaims = JSON.parse(user.customAttributes);
-            } catch {}
+            } catch (err) {
+                log.warn(
+                    'verifyIdToken: ignoring malformed customAttributes',
+                    { uid: user.localId },
+                    err
+                );
+            }
         }
 
         // Claims first so they can never override uid/email
@@ -96,9 +115,14 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
             }
         } catch (err) {
             // Roll back so we don't leave a half-created user
-            await _idt.call('/accounts:delete', { localId: uid }, 'admin').catch(() => {});
+            log.warn('createUser: follow-up step failed, rolling back', { uid }, err);
+            await _idt.call('/accounts:delete', { localId: uid }, 'admin').catch((e) => {
+                log.error('createUser rollback: could not delete the auth user (orphaned)', { uid }, e);
+            });
             if (_fsAuthCollection) {
-                await fs.delete(_fsAuthCollection, uid).catch(() => {});
+                await fs.delete(_fsAuthCollection, uid).catch((e) => {
+                    log.error('createUser rollback: could not delete the profile doc', { uid }, e);
+                });
             }
             throw err;
         }
@@ -177,7 +201,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
             await _idt.call('/accounts:delete', { localId: uid }, 'admin');
             return { success: true };
         } catch (error) {
-            if (String(error).includes('USER_NOT_FOUND')) return { success: true };
+            if (String(error).includes('USER_NOT_FOUND')) {
+                log.debug('deleteUserPermanent: user already gone, treating as success', { uid });
+                return { success: true };
+            }
             throw error;
         }
     }
@@ -219,8 +246,11 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
                             'You have been signed out of existing sessions.\n\n' +
                             'If you did not expect this, please contact support immediately.',
                     })) !== false;
+                if (!emailSent) log.warn('resetUserPassword: emailSender returned false', { uid });
             } catch (err) {
-                console.error('emailSender failed:', err);
+                log.error('resetUserPassword: emailSender threw', { uid }, err);
+                // Keep the historical console output for callers who have not enabled logging
+                if (!log.isEnabled('error')) console.error('emailSender failed:', err);
             }
         }
 
@@ -232,7 +262,11 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
         const normalized = normalizeEmail(email)!;
 
         const user = await _idt.lookupUser({ email: [normalized] });
-        if (!user || user.disabled) return;
+        if (!user || user.disabled) {
+            // Intentionally silent to the caller (prevents account enumeration)
+            log.debug('requestPasswordReset: no-op, user not found or disabled');
+            return;
+        }
 
         try {
             await _idt.call(
@@ -245,7 +279,10 @@ export function createAuth(ctx: Context, fs: FirestoreApi, emailSender?: EmailSe
                 'apiKey'
             );
         } catch (err) {
-            if (err instanceof FirebaseError && err.code === 'EMAIL_NOT_FOUND') return;
+            if (err instanceof FirebaseError && err.code === 'EMAIL_NOT_FOUND') {
+                log.debug('requestPasswordReset: EMAIL_NOT_FOUND swallowed');
+                return;
+            }
             throw err;
         }
 
