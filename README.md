@@ -249,6 +249,80 @@ try {
 }
 ```
 
+## Logging
+
+`firebase-edge` can emit diagnostic logs for everything it does internally. It is **off by default**: with no
+`logger` option nothing is printed, and the instrumentation is not installed at all (zero overhead).
+
+```ts
+import { createFirebaseEdge, configFromEnv } from 'firebase-edge';
+
+// 1. a level (logs to the console)
+createFirebaseEdge({ ...config, logger: 'debug' });
+
+// 2. via environment: FB_LOG_LEVEL=debug  (configFromEnv picks it up)
+createFirebaseEdge(configFromEnv(env));
+
+// 3. your own logger
+createFirebaseEdge({
+    ...config,
+    logger: { level: 'info', sink: (e) => myLogger[e.level === 'trace' ? 'debug' : e.level](e.message, e.data) },
+});
+```
+
+`logger: true` is shorthand for `'info'`. `{ level?, sink? }` defaults to `'info'` with the console sink. A mistyped
+level logs one console warning and leaves logging off.
+
+### Levels
+
+Each level includes everything above it.
+
+| Level   | What you get                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------- |
+| `error` | Faults: 5xx responses, network failures, unexpected exceptions, rollback that left orphaned data, emailSender throwing, bad private key |
+| `warn`  | Caller-side failures (4xx, validation), 429/5xx responses, swallowed-but-suspicious cases (e.g. malformed custom claims, emailSender returning `false`, `verifyIdToken` failing for a non-auth reason) |
+| `info`  | One line per public operation with duration (`auth.createUser ok`), token refreshes, client creation      |
+| `debug` | Operation starts, every HTTP request/response (method, URL, status, ms), token cache hits/misses/in-flight sharing, deliberate silent no-ops |
+| `trace` | Request/response payloads and operation arguments/results (redacted, size-capped)                          |
+
+### Entry shape
+
+```ts
+interface LogEntry {
+    level: 'error' | 'warn' | 'info' | 'debug' | 'trace';
+    scope: string;      // '' | 'auth' | 'firestore' | 'storage' | 'http' | 'token' | 'token:signer'
+    message: string;
+    time: number;       // epoch ms
+    data?: Record<string, unknown>; // redacted, JSON-safe; failures include data.error = { name, message, code, status, cause }
+    error?: unknown;    // the original error object (stack intact); NOT redacted, same object your caller receives
+}
+```
+### Redaction
+
+`message` and `data` are redacted before any sink sees them: private keys, access/ID tokens, JWTs, `Authorization`
+headers, passwords, OOB codes, API keys (`?key=`), and signed-URL signatures are removed; emails and phone numbers are
+partially masked (`j***@example.com`). There is no option to turn redaction off.
+
+Limits to be aware of: **application data is not redacted** (Firestore document fields, custom claims, object
+contents) and appears at `trace`. Use `trace` for local debugging only. `LogEntry.error` is the raw error object, so
+forward `data` rather than `error` to third-party log drains if that matters to you.
+
+### Tracing a failure
+
+1. Set `logger: 'debug'` (or `FB_LOG_LEVEL=debug`) and reproduce.
+2. Find the failing `<op> failed` line; `data.error` has the Google error code/status and any `cause`.
+3. The `http` lines just before it show the exact request (secrets removed) and status; the `token` lines show whether
+   the OAuth step was the problem.
+
+### Behavior notes
+
+- `FirebaseError` gained an optional `cause` (4th constructor argument). `INVALID_ID_TOKEN` and `INVALID_PAGE_TOKEN`
+  now carry the underlying error instead of discarding it.
+- Logging never throws: a failing or rejecting sink is ignored.
+- With logging disabled, behaviour is unchanged, including the existing `console.error('emailSender failed:', ...)`
+  fallback.
+
+
 ## Runtime support
 
 The package requires Node.js 20 or later and is built on standard `fetch` and Web Crypto APIs.
