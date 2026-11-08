@@ -11,6 +11,21 @@ export function base64UrlEncode(data: ArrayBuffer | Uint8Array): string {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** Decodes a URL-safe Base64 string into bytes. */
+export function base64UrlDecode(value: string): Uint8Array {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
+        throw new Error('Invalid Base64URL encoding');
+    }
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+/** Decodes a URL-safe Base64-encoded JSON value. */
+export function base64UrlDecodeJson(value: string): unknown {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(base64UrlDecode(value)));
+}
+
 /**
  * Converts a PEM-formatted cryptographic key string into a DER ArrayBuffer.
  *
